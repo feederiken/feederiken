@@ -17,8 +17,7 @@ import zio._
 import zio.stream._
 import zio.logging._
 import com.monovore.decline._
-import cats.syntax.validated._
-import cats.syntax.foldable._
+import cats.syntax.all._
 import cats.instances.list._
 import cats.data.Chain
 import java.util.Date
@@ -57,14 +56,18 @@ object Feederiken extends App {
 
   def bench = Command[RIO[Env, Unit]]("bench", "benchmark CPU hashrate") {
     (
-      Opts.option[Int]("n", "how many keys to generate for benchmarking").withDefault(10000),
-    ).map { (n) =>
+      Opts.option[Int]("n", "how many keys to generate for benchmarking").withDefault(10000).validate("n must be positive")(_ > 0),
+      Opts.flag("parallel", "run a parallel benchmark").orFalse,
+      Opts.option[Int]("j", "# of concurrent threads to use").orNone,
+    ).mapN { (n, parallel, j) =>
       for {
-        _ <- log.info(s"Benchmarking $n iterations without parallelism")
+        threadCount <- ZIO.getOrFail(j).orElse(if (parallel) availableProcessors else UIO(1))
         creationTime <- now
-        freq_n <- measureFreq(genCandidates(creationTime).take(n).runDrain)
-        freq = n * freq_n
-        _ <- console.putStrLn(s"Single-threaded hashrate: $freq Hz")
+        _ <- log.info(s"Benchmarking $n iterations ${if (threadCount == 1) "without parallelism" else s"$threadCount times concurrently"}")
+        workers <- ZIO.forkAll(Iterable.fill(threadCount)(measureFreq(genCandidates(creationTime).take(n).runDrain)))
+        freqs <- workers.join
+        freq = n * freqs.sum
+        _ <- console.putStrLn(s"${if (threadCount == 1) "Single-threaded" else "Parallel"} hashrate: $freq Hz")
       } yield ()
     }
   }
