@@ -83,7 +83,6 @@ object Feederiken extends App {
     for {
       threadCount <- availableProcessors
       creationTime <- now
-      _ <- console.putStrLn(prefix.toString)
 
       // bruteforce in parallel
       result <- Iterable.fill(threadCount)(bruteForceKey(prefix.iterator.toArray, creationTime)).reduce(_ raceFirst _)
