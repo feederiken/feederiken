@@ -25,7 +25,7 @@ package object pgp {
   type KeyPairGenerator = java.security.KeyPairGenerator
   type KeyPair = java.security.KeyPair
   type DatedKeyPair = org.bouncycastle.openpgp.PGPKeyPair
-  type KeyRing = org.bouncycastle.openpgp.PGPKeyRing
+  type KeyRing = org.bouncycastle.openpgp.PGPSecretKeyRing
 
   def keyPairGenerator: ZManaged[PGP, Nothing, KeyPairGenerator] =
     ZManaged.service[Service] >>= { _.keyPairGenerator }

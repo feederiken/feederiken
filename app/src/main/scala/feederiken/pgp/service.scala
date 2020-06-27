@@ -60,7 +60,7 @@ private class BouncyCastleService(provider: BouncyCastleProvider) extends Servic
   } yield ring
 
   def loadRing(in: InputStream) = blocking.effectBlockingIO {
-    new PGPPublicKeyRing(PGPUtil.getDecoderStream(in), new JcaKeyFingerprintCalculator)
+    new PGPSecretKeyRing(PGPUtil.getDecoderStream(in), new JcaKeyFingerprintCalculator)
   }
 
   def saveRing(kr: KeyRing, out: OutputStream) =

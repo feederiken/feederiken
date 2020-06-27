@@ -28,7 +28,31 @@ import pgp._
 import java.io.FileOutputStream
 
 
+object CLI {
+  import Opts._
+  val j = option[Int]("j", "# of concurrent threads to use").validate("j must be positive")(_ > 0).orNone
+  val n = option[Int]("n", "how many keys to generate for benchmarking").withDefault(10000).validate("n must be positive")(_ > 0)
+  val parallel = flag("parallel", "run a parallel benchmark").orFalse
+  val nodes = arguments[String]("nodes")
+  val localNode = flag("no-local-node", "don't start a search node on this machine").orTrue
+  val prefix = option[String]("prefix", "key prefix to look for (hex)").withDefault("feed").mapValidated {
+    _.filterNot(_.isWhitespace).grouped(2).toList.foldMap { s =>
+      try Chain(Integer.parseUnsignedInt(s, 16).toByte).valid
+      catch {
+        case _: NumberFormatException => s"Invalid byte: $s".invalidNel
+      }
+    }
+  }
+  val configFile = argument[java.nio.file.Path]("config_file")
+}
 object FeederikenApp extends App {
+  val UserId = "Anonymous"
+  val now = UIO(new Date)
+  val availableProcessors = for {
+    n <- UIO(java.lang.Runtime.getRuntime.availableProcessors)
+    _ <- log.info(s"Detected $n parallel threads")
+  } yield n
+
   def genCandidates(creationTime: Date) = {
     val creationTimeRange = Chunk.fromIterable(0 until 64 map { creationTime.toInstant().minusSeconds(_) } map { Date.from })
     ZStream[PGP, Nothing, DatedKeyPair] {
@@ -42,8 +66,20 @@ object FeederikenApp extends App {
     }
   }
 
-  def bruteForceKey(prefix: Array[Byte], creationTime: Date) =
-    genCandidates(creationTime).filter(_.getPublicKey.getFingerprint.startsWith(prefix)).take(1).runHead.someOrFailException <* log.info("Found matching keypair")
+  def performSearch(prefix: Array[Byte], j: Option[Int] = None) = for {
+    creationTime <- now
+      stream = genCandidates(creationTime).filter(_.getPublicKey.getFingerprint.startsWith(prefix))
+
+    // bruteforce in parallel
+    threadCount <- ZIO.getOrFail(j) orElse availableProcessors
+    search = stream.take(1).runHead.someOrFailException <* log.info("Found matching keypair")
+
+    result <- Iterable.fill(threadCount)(search).reduce(_ raceFirst _)
+  } yield result
+
+  def printRing(ring: KeyRing) =
+    log.info("Saving results to results.asc") *>
+    Managed.fromAutoCloseable(IO(new FileOutputStream("results.asc", true))).use(saveRing(ring, _))
 
   def measureFreq[R, E](action: ZIO[R, E, Any]): ZIO[R with clock.Clock, E, Double] = for {
     r <- action.timed
@@ -51,15 +87,9 @@ object FeederikenApp extends App {
     freq = 1e9 / t.toNanos
   } yield freq
 
-  val now = IO(new Date)
-  val availableProcessors = IO(java.lang.Runtime.getRuntime.availableProcessors).tap(n => log.info(s"Detected $n parallel threads"))
-
   def bench = Command[RIO[Env, Unit]]("bench", "benchmark CPU hashrate") {
-    (
-      Opts.option[Int]("n", "how many keys to generate for benchmarking").withDefault(10000).validate("n must be positive")(_ > 0),
-      Opts.flag("parallel", "run a parallel benchmark").orFalse,
-      Opts.option[Int]("j", "# of concurrent threads to use").orNone,
-    ).mapN { (n, parallel, j) =>
+    import CLI._
+    (n, parallel, j).mapN { (n, parallel, j) =>
       for {
         threadCount <- ZIO.getOrFail(j).orElse(if (parallel) availableProcessors else UIO(1))
         creationTime <- now
@@ -73,29 +103,17 @@ object FeederikenApp extends App {
   }
 
   def search = Command[RIO[Env, Unit]]("search", "search for a vanity key") {
-    for {
-      prefix <- Opts.option[String]("prefix", "key prefix to look for (hex)").withDefault("feed").mapValidated {
-        _.filterNot(_.isWhitespace).grouped(2).toList.foldMap { s =>
-          try Chain(Integer.parseUnsignedInt(s, 16).toByte).valid
-          catch {
-            case _: NumberFormatException => s"Invalid byte: $s".invalidNel
-          }
-        }
-      }
-    } yield
-    for {
-      threadCount <- availableProcessors
-      creationTime <- now
-
-      // bruteforce in parallel
-      result <- Iterable.fill(threadCount)(bruteForceKey(prefix.iterator.toArray, creationTime)).reduce(_ raceFirst _)
-
-      // append result to results.asc
-      resultRing <- makeRing(result, "Anonymous")
-      _ <- log.info("Saving results to results.asc")
-      _ <- Managed.fromAutoCloseable(IO(new FileOutputStream("results.asc", true))).use(saveRing(resultRing, _))
-    } yield ()
+    import CLI._
+    (prefix, j).mapN { (prefix, j) =>
+      for {
+        result <- performSearch(prefix.iterator.toArray, j)
+        // append result to results.asc
+        ring <- makeRing(result, UserId)
+        _ <- printRing(ring)
+      } yield ()
+    }
   }
+
   def top = Command("feederiken", "vanity PGP key generator") {
     Opts.subcommands(search, bench)
   }
