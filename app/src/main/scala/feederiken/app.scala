@@ -30,7 +30,7 @@ import java.io.FileOutputStream
 
 object FeederikenApp extends App {
   def genCandidates(creationTime: Date) = {
-    val creationTimeRange = Chunk.fromIterable(0 until 64 map { creationTime.toInstant().plusSeconds(_) } map { Date.from })
+    val creationTimeRange = Chunk.fromIterable(0 until 64 map { creationTime.toInstant().minusSeconds(_) } map { Date.from })
     ZStream[PGP, Nothing, DatedKeyPair] {
       for {
         kpg <- keyPairGenerator
