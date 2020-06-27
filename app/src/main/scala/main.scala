@@ -15,6 +15,7 @@
 
 import zio._
 import zio.stream._
+import zio.logging._
 import com.monovore.decline._
 import cats.syntax.validated._
 import cats.syntax.foldable._
@@ -27,6 +28,8 @@ import java.io.FileOutputStream
 
 
 object Feederiken extends App {
+  type Env = ZEnv with PGP with Logging
+
   def genCandidates(creationTime: Date) = {
     val creationTimeRange = Chunk.fromIterable(0 until 64 map { creationTime.toInstant().plusSeconds(_) } map { Date.from })
     ZStream[PGP, Nothing, DatedKeyPair] {
@@ -41,7 +44,7 @@ object Feederiken extends App {
   }
 
   def bruteForceKey(prefix: Array[Byte], creationTime: Date) =
-    genCandidates(creationTime).filter(_.getPublicKey.getFingerprint.startsWith(prefix)).take(1).runHead.someOrFailException
+    genCandidates(creationTime).filter(_.getPublicKey.getFingerprint.startsWith(prefix)).take(1).runHead.someOrFailException <* log.info("Found matching keypair")
 
   def measureFreq[R, E](action: ZIO[R, E, Any]): ZIO[R with clock.Clock, E, Double] = for {
     r <- action.timed
@@ -50,13 +53,14 @@ object Feederiken extends App {
   } yield freq
 
   val now = IO(new Date)
-  val availableProcessors = IO(java.lang.Runtime.getRuntime.availableProcessors)
+  val availableProcessors = IO(java.lang.Runtime.getRuntime.availableProcessors).tap(n => log.info(s"Detected $n parallel threads"))
 
-  def bench = Command[RIO[PGP with ZEnv, Unit]]("bench", "benchmark CPU hashrate") {
+  def bench = Command[RIO[Env, Unit]]("bench", "benchmark CPU hashrate") {
     (
       Opts.option[Int]("n", "how many keys to generate for benchmarking").withDefault(10000),
     ).map { (n) =>
       for {
+        _ <- log.info(s"Benchmarking $n iterations without parallelism")
         creationTime <- now
         freq_n <- measureFreq(genCandidates(creationTime).take(n).runDrain)
         freq = n * freq_n
@@ -65,7 +69,7 @@ object Feederiken extends App {
     }
   }
 
-  def search = Command[RIO[PGP with ZEnv, Unit]]("search", "search for a vanity key") {
+  def search = Command[RIO[Env, Unit]]("search", "search for a vanity key") {
     for {
       prefix <- Opts.option[String]("prefix", "key prefix to look for (hex)").withDefault("feed").mapValidated {
         _.filterNot(_.isWhitespace).grouped(2).toList.foldMap { s =>
@@ -86,12 +90,14 @@ object Feederiken extends App {
 
       // append result to results.asc
       resultRing <- makeRing(result, "anonymous")
+      _ <- log.info("Saving results to results.asc")
       _ <- Managed.fromAutoCloseable(IO(new FileOutputStream("results.asc", true))).use(saveRing(resultRing, _))
     } yield ()
   }
   def top = Command("feederiken", "vanity PGP key generator") {
     Opts.subcommands(search, bench)
   }
+
   def run(args: List[String]): ZIO[ZEnv, Nothing, ExitCode] =
     top.parse(args) match {
       case Left(h) =>
@@ -99,6 +105,7 @@ object Feederiken extends App {
           if (h.errors.isEmpty) ExitCode.success
           else ExitCode.failure
         }
-      case Right(program) => program.provideCustomLayer(PGP.bouncyCastle).exitCode
+      case Right(program) =>
+        program.provideCustomLayer(PGP.bouncyCastle ++ Logging.console()).exitCode
     }
 }
