@@ -13,6 +13,8 @@
 // ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 // OTHER DEALINGS IN THE SOFTWARE.
 
+package feederiken
+
 import zio._
 import zio.stream._
 import zio.logging._
@@ -26,9 +28,7 @@ import pgp._
 import java.io.FileOutputStream
 
 
-object Feederiken extends App {
-  type Env = ZEnv with PGP with Logging
-
+object FeederikenApp extends App {
   def genCandidates(creationTime: Date) = {
     val creationTimeRange = Chunk.fromIterable(0 until 64 map { creationTime.toInstant().plusSeconds(_) } map { Date.from })
     ZStream[PGP, Nothing, DatedKeyPair] {

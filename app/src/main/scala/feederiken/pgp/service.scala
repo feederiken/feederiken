@@ -13,7 +13,7 @@
 // ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 // OTHER DEALINGS IN THE SOFTWARE.
 
-package pgp
+package feederiken.pgp
 
 import zio._
 import zio.stream._
