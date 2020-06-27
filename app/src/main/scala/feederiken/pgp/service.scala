@@ -24,25 +24,24 @@ import java.util.Date
 import org.bouncycastle.jce.provider.BouncyCastleProvider
 import org.bouncycastle.bcpg._
 import org.bouncycastle.openpgp._
+import org.bouncycastle.openpgp.operator._
 import org.bouncycastle.openpgp.operator.jcajce._
-import org.bouncycastle.openpgp.operator.PBESecretKeyEncryptor
 
 trait Service {
   def keyPairGenerator: UManaged[KeyPairGenerator]
   def genKeyPair(kpg: KeyPairGenerator): UIO[KeyPair]
   def dateKeyPair(rawkp: KeyPair)(creationTime: Date): UIO[DatedKeyPair]
   def makeRing(kp: DatedKeyPair, userId: String): UIO[KeyRing]
-  def loadRing(in: InputStream): IO[IOException, KeyRing]
-  def saveRing(kr: KeyRing, out: OutputStream): IO[IOException, Unit]
+  def loadRing(in: InputStream): ZIO[blocking.Blocking, IOException, KeyRing]
+  def saveRing(kr: KeyRing, out: OutputStream): ZIO[blocking.Blocking, IOException, Unit]
 }
 
 private class BouncyCastleService(provider: BouncyCastleProvider) extends Service {
   def keyPairGenerator: UManaged[KeyPairGenerator] =
     Managed.effectTotal(java.security.KeyPairGenerator.getInstance("ed25519", provider))
 
-  def genKeyPair(kpg: KeyPairGenerator) = for {
-    rawkp <- UIO(kpg.generateKeyPair())
-  } yield rawkp
+  def genKeyPair(kpg: KeyPairGenerator) =
+    UIO(kpg.generateKeyPair())
 
   def dateKeyPair(rawkp: KeyPair)(creationTime: Date) =
     UIO(new JcaPGPKeyPair(PublicKeyAlgorithmTags.EDDSA, rawkp, creationTime))
@@ -60,13 +59,14 @@ private class BouncyCastleService(provider: BouncyCastleProvider) extends Servic
       ).generateSecretKeyRing())
   } yield ring
 
-  def loadRing(in: InputStream): IO[IOException, KeyRing] =
-    IO(new PGPPublicKeyRing(PGPUtil.getDecoderStream(in), new JcaKeyFingerprintCalculator)).refineToOrDie
+  def loadRing(in: InputStream) = blocking.effectBlockingIO {
+    new PGPPublicKeyRing(PGPUtil.getDecoderStream(in), new JcaKeyFingerprintCalculator)
+  }
 
-  def saveRing(kr: KeyRing, out: OutputStream): IO[IOException, Unit] =
-    Managed.fromAutoCloseable(IO(new ArmoredOutputStream(out))).use { out =>
-      IO(kr.encode(out))
-    }.refineToOrDie
+  def saveRing(kr: KeyRing, out: OutputStream) =
+    Managed.fromAutoCloseable(UIO(new ArmoredOutputStream(out))).use { out =>
+      blocking.effectBlockingIO(kr.encode(out))
+    }
 }
 
 object PGP {
