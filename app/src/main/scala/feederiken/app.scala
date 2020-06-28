@@ -91,7 +91,7 @@ object FeederikenApp extends App {
       result <- Iterable.fill(threadCount)(bruteForceKey(prefix.iterator.toArray, creationTime)).reduce(_ raceFirst _)
 
       // append result to results.asc
-      resultRing <- makeRing(result, "anonymous")
+      resultRing <- makeRing(result, "Anonymous")
       _ <- log.info("Saving results to results.asc")
       _ <- Managed.fromAutoCloseable(IO(new FileOutputStream("results.asc", true))).use(saveRing(resultRing, _))
     } yield ()
