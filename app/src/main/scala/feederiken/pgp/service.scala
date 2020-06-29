@@ -16,7 +16,6 @@
 package feederiken.pgp
 
 import zio._
-import zio.stream._
 
 
 import java.io._
@@ -27,6 +26,8 @@ import org.bouncycastle.openpgp._
 import org.bouncycastle.openpgp.operator._
 import org.bouncycastle.openpgp.operator.jcajce._
 
+/** @see pgp
+ */
 trait Service {
   def keyPairGenerator: UManaged[KeyPairGenerator]
   def genKeyPair(kpg: KeyPairGenerator): UIO[KeyPair]
@@ -70,6 +71,8 @@ private class BouncyCastleService(provider: BouncyCastleProvider) extends Servic
 }
 
 object PGP {
+  /** Provide a [pgp] layer using bouncycastle.
+   */
   def bouncyCastle: TaskLayer[PGP] =
     ZLayer.fromEffect(IO(new BouncyCastleService(new BouncyCastleProvider)))
 }

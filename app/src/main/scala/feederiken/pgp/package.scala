@@ -19,6 +19,8 @@ import zio._
 import java.io._
 import java.util.Date
 
+/** PGP operations. Not very generic, tailored to the specific use case of feederiken.
+ */
 package object pgp {
   type PGP = Has[Service]
 
@@ -27,22 +29,34 @@ package object pgp {
   type DatedKeyPair = org.bouncycastle.openpgp.PGPKeyPair
   type KeyRing = org.bouncycastle.openpgp.PGPSecretKeyRing
 
-  def keyPairGenerator: ZManaged[PGP, Nothing, KeyPairGenerator] =
+  /** Resource required to generate a sequence of random keypairs.
+   */
+  def keyPairGenerator: URManaged[PGP, KeyPairGenerator] =
     ZManaged.service[Service] >>= { _.keyPairGenerator }
 
-  def genKeyPair(kpg: KeyPairGenerator) =
+  /** Pull a fresh random Ed25519 keypair from the generator.
+   */
+  def genKeyPair(kpg: KeyPairGenerator): URIO[PGP, KeyPair] =
     ZIO.service[Service] >>= { _.genKeyPair(kpg) }
 
-  def dateKeyPair(rawkp: KeyPair)(creationTime: Date) =
+  /** Combine a keypair and a timestamp. The PGP fingerprint depends on exactly both.
+   */
+  def dateKeyPair(rawkp: KeyPair)(creationTime: Date): URIO[PGP, DatedKeyPair] =
     ZIO.service[Service] >>= { _.dateKeyPair(rawkp)(creationTime) }
 
-  def makeRing(kp: DatedKeyPair, userId: String) =
+  /** Build a keyring from its primary key. This doesn't effect the PGP fingerprint.
+   */
+  def makeRing(kp: DatedKeyPair, userId: String): URIO[PGP, KeyRing] =
     ZIO.service[Service] >>= { _.makeRing(kp, userId) }
 
-  def loadRing(in: InputStream) =
+  /** Read a secret keyring from a byte stream.
+   */
+  def loadRing(in: InputStream): ZIO[PGP with blocking.Blocking, IOException, KeyRing] =
     ZIO.service[Service] >>= { _.loadRing(in) }
 
-  def saveRing(kr: KeyRing, out: OutputStream) =
+  /** Dump a keyring in PGP armored format.
+   */
+  def saveRing(kr: KeyRing, out: OutputStream): ZIO[PGP with blocking.Blocking, IOException, Unit] =
     ZIO.service[Service] >>= { _.saveRing(kr, out) }
 
 }
