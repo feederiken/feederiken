@@ -36,10 +36,14 @@ jobs:
           name: feederiken.jar
       - uses: actions/create-release@v1.1.1
         id: create_gh_release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # This token is provided by Actions, you do not need to create your own token
         with:
           tag_name: ${{ github.ref }}
           release_name: ${{ github.ref }}
       - uses: actions/upload-release-asset@v1.0.2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_gh_release.outputs.upload_url }}
           asset_path: feederiken.jar
