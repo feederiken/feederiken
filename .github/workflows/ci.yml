@@ -26,3 +26,22 @@ jobs:
       with:
         name: feederiken.jar
         path: out/app/assembly/dest/out.jar
+  publish_release:
+    runs-on: ubuntu-latest
+    needs: build
+    
+    steps:
+      - uses: actions/download-artifact@v2
+        with:
+          name: feederiken.jar
+      - uses: actions/create-release@v1.1.1
+        id: create_gh_release
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: ${{ github.ref }}
+      - uses: actions/upload-release-asset@v1.0.2
+        with:
+          upload_url: ${{ steps.create_gh_release.outputs.upload_url }}
+          asset_path: feederiken.jar
+          asset_name: feederiken-${{ github.ref }}.jar
+          asset_content_type: application/java-archive
