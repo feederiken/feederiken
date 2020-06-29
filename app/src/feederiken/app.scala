@@ -7,6 +7,7 @@ import java.util.Date
 
 import pgp._
 import java.io.FileOutputStream
+import feederiken.actors.FeederikenSystem
 
 object FeederikenApp extends App {
   val UserId = "Anonymous"
@@ -89,6 +90,34 @@ object FeederikenApp extends App {
 
           // append result to results.asc
           ring <- makeRing(result, UserId)
+          _ <- printRing(ring)
+        } yield ()
+
+      case command: Node =>
+        for {
+          sys <- FeederikenSystem.start("node", Some(command.configFile.toFile))
+          path <- sys.worker.path
+          _ <- console.putStrLn(s"Path is: $path")
+          _ <- IO.never // Let actors work until interrupted
+        } yield ()
+
+      case command: Coordinator =>
+        for {
+          sys <- FeederikenSystem.start("coordinator")
+          remoteWorkers <- ZIO.foreach(command.nodes.toList)(sys.select(_))
+          workers =
+            Option.when(command.localNode)(sys.worker).toList ++ remoteWorkers
+          prefix = command.prefix.toList
+
+          exit <- sys.executeOn(workers) {
+            for {
+              result <- performSearch(prefix)
+              ring <- makeRing(result, UserId)
+            } yield ring.getEncoded // The full object wont serialize
+          }
+          encodedResult <- ZIO.done(exit)
+          buf = new java.io.ByteArrayInputStream(encodedResult)
+          ring <- loadRing(buf)
           _ <- printRing(ring)
         } yield ()
     }

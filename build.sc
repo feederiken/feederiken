@@ -8,6 +8,7 @@ object app extends ScalaModule with ScalafmtModule {
     ivy"dev.zio::zio:1.0.0-RC20",
     ivy"dev.zio::zio-streams:1.0.0-RC20",
     ivy"dev.zio::zio-logging:0.3.2",
+    ivy"dev.zio::zio-actors:0.0.6+28-1e52d1fe-SNAPSHOT",
     ivy"org.bouncycastle:bcpg-jdk15on:1.65",
   )
 }
