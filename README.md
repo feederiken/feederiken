@@ -1,5 +1,4 @@
-# feederiken
-![CI](https://github.com/feederiken/feederiken/workflows/CI/badge.svg)
+# feederiken ![CI](https://github.com/feederiken/feederiken/workflows/CI/badge.svg)
 Generate PGP keys with custom patterns in the fingerprint.
 
 Experimental support for distributed operation is available.
