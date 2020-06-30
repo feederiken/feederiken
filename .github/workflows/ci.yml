@@ -48,6 +48,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_gh_release.outputs.upload_url }}
-          asset_path: feederiken
-          asset_name: feederiken-${{ github.ref }}.jar
+          asset_path: feederiken/feederiken.jar
+          asset_name: feederiken.jar
           asset_content_type: application/java-archive
