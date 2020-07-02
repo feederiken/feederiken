@@ -32,7 +32,6 @@ object CLI {
   import Opts._
   val j = option[Int]("j", "# of concurrent threads to use").validate("j must be positive")(_ > 0).orNone
   val n = option[Int]("n", "how many keys to generate for benchmarking").withDefault(10000).validate("n must be positive")(_ > 0)
-  val parallel = flag("parallel", "run a parallel benchmark").orFalse
   val nodes = arguments[String]("nodes")
   val localNode = flag("no-local-node", "don't start a search node on this machine").orTrue
   val prefix = option[String]("prefix", "key prefix to look for (hex)").withDefault("feed").mapValidated {
@@ -89,9 +88,9 @@ object FeederikenApp extends App {
 
   def bench = Command[RIO[Env, Unit]]("bench", "benchmark CPU hashrate") {
     import CLI._
-    (n, parallel, j).mapN { (n, parallel, j) =>
+    (n, j).mapN { (n, j) =>
       for {
-        threadCount <- ZIO.getOrFail(j).orElse(if (parallel) availableProcessors else UIO(1))
+        threadCount <- ZIO.getOrFail(j) orElse availableProcessors
         creationTime <- now
         _ <- log.info(s"Benchmarking $n iterations ${if (threadCount == 1) "without parallelism" else s"$threadCount times concurrently"}")
         workers <- ZIO.forkAll(Iterable.fill(threadCount)(measureFreq(genCandidates(creationTime).take(n).runDrain)))
