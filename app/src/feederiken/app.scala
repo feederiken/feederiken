@@ -53,7 +53,7 @@ object FeederikenApp extends App {
   } yield n
 
   def genCandidates(creationTime: Date) = {
-    val creationTimeRange = Chunk.fromIterable(0 until 64 map { creationTime.toInstant().minusSeconds(_) } map { Date.from })
+    val creationTimeRange = Chunk.fromIterable(0 until 1024 map { creationTime.toInstant().minusSeconds(_) } map { Date.from })
     ZStream[PGP, Nothing, DatedKeyPair] {
       for {
         kpg <- keyPairGenerator
@@ -67,7 +67,7 @@ object FeederikenApp extends App {
 
   def performSearch(prefix: Array[Byte], j: Option[Int] = None) = for {
     creationTime <- now
-      stream = genCandidates(creationTime).filter(_.getPublicKey.getFingerprint.startsWith(prefix))
+    stream = genCandidates(creationTime).filter(_.getPublicKey.getFingerprint.startsWith(prefix))
 
     // bruteforce in parallel
     threadCount <- ZIO.getOrFail(j) orElse availableProcessors
