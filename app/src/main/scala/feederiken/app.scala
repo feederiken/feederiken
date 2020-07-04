@@ -51,7 +51,7 @@ object FeederikenApp extends App {
   val availableProcessors = for {
     n <- UIO(java.lang.Runtime.getRuntime.availableProcessors)
     _ <- log.info(s"Detected $n parallel threads")
-  } yield n
+  } yield 3 * n / 2
 
   def genCandidates(creationTime: Date) = {
     val creationTimeRange = Chunk.fromIterable(0 until 1024 map { creationTime.toInstant().minusSeconds(_) } map { Date.from })
