@@ -10,10 +10,16 @@ import java.nio.file.Path
 sealed abstract class Command
 case class Search(j: Option[Int], prefix: Chain[Byte]) extends Command
 case class Bench(j: Option[Int], n: Int) extends Command
-case class Node(configFile: Path, j: Option[Int]) extends Command
+case class Node(
+    j: Option[Int],
+    configFile: Path,
+    nodeName: String,
+    dispatcherPath: String,
+) extends Command
 case class Coordinator(
+    j: Option[Int],
     prefix: Chain[Byte],
-    nodes: NonEmptyList[String],
+    configFile: Path,
     localNode: Boolean,
 ) extends Command
 
@@ -26,7 +32,7 @@ object CLI {
   private val n = option[Int]("iterations", "how many keys to generate for benchmarking", short="n")
     .withDefault(10000)
     .validate("n must be positive")(_ > 0)
-  private val nodes = arguments[String]("nodes")
+  private val dispatcherPath = argument[String]("dispatcher-path")
   private val localNode =
     flag("no-local-node", "don't start a search node on this machine").orTrue
   private val prefix = option[String]("prefix", "key prefix to look for (hex)")
@@ -40,6 +46,7 @@ object CLI {
       }
     }
   private val configFile = argument[Path]("config_file")
+  private val nodeName = argument[String]("node_name")
 
   private def bench =
     Command[Bench]("bench", "benchmark CPU hashrate") {
@@ -53,12 +60,12 @@ object CLI {
 
   private def node =
     Command[Node]("node", "serve as a node in a distributed search") {
-      (configFile, j).mapN(Node)
+      (j, configFile, nodeName, dispatcherPath).mapN(Node)
     }
 
   private def coordinator =
     Command[Coordinator]("coordinator", "coordinate a distributed search") {
-      (prefix, nodes, localNode).mapN(Coordinator)
+      (j, prefix, configFile, localNode).mapN(Coordinator)
     }
 
   def top =

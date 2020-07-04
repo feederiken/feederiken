@@ -6,32 +6,49 @@ import zio.duration._
 import java.io.File
 import zio.logging.log
 
-trait FeederikenSystem {
-  protected val as: ActorSystem
-  val worker: Worker
+final class FeederikenSystem(
+    protected val as: ActorSystem,
+    protected val workerI: Ref[Int],
+    val dispatcher: RIO[feederiken.Env, Dispatcher],
+) {
   def select[F[+_]](path: String) = as.select(path)
 
-  def executeOn[E, A](
-      workers: Seq[Worker]
-  )(job: ZIO[feederiken.Env, E, A]): RIO[feederiken.Env, Exit[E, A]] =
+  def execute[E, A](
+      job: ZIO[feederiken.Env, E, A]
+  ): RIO[feederiken.Env, Exit[E, A]] =
+    for {
+      dispatcher <- this.dispatcher
+      p <- Promise.make[Any, Any]
+      exit <- (dispatcher ? Dispatcher.Start(job, p))
+        .bracket_((dispatcher ? Dispatcher.Reset).orDie) {
+          p.await.run.map(_.asInstanceOf[Exit[E, A]])
+        }
+    } yield exit
+
+  protected val spawnWorker: RIO[feederiken.Env, Worker] = for {
+    i <- workerI.getAndUpdate(_ + 1)
+    w <- as.make(
+      s"worker$i",
+      actors.Supervisor.none,
+      Worker.initial,
+      Worker.Interpreter,
+    )
+  } yield w
+
+  def attachTo(dispatcher: Dispatcher, j: Int = 1) =
     (for {
-      _ <- IO.foreach_(workers)(_ ! Worker.Start(job))
-      _ <- log.info("Job dispatched")
-      exit <- (for {
-          exits <- IO.foreach(workers)(_ ? Worker.Poll)
-          exit <- ZIO.getOrFail(exits.collectFirst { case Some(e) => e })
-        } yield exit).retry(Schedule.fixed(1.second))
-    } yield exit.asInstanceOf[Exit[E, A]])
-      .ensuring(IO.foreach_(workers)(_ ! Worker.Reset).orDie)
+      worker <- spawnWorker
+      _ <- dispatcher ? Dispatcher.Attach(worker)
+    } yield ()).repeat(Schedule.recurs(j - 1))
 }
 object FeederikenSystem {
-  def start(name: String, configFile: Option[File] = None) =
+  def start(name: String, configFile: File) =
     for {
-      _as <- ActorSystem(name, configFile)
+      as <- ActorSystem(name, Some(configFile))
       sup = actors.Supervisor.none
-      _worker <- _as.make("worker", sup, Worker.Ready, Worker.Interpreter)
-    } yield new FeederikenSystem {
-      override val as = _as
-      override val worker = _worker
-    }
+      workerI <- Ref.make(0)
+      dispatcher <-
+        as.make("dispatcher", sup, Dispatcher.initial, Dispatcher.Interpreter)
+          .memoize
+    } yield new FeederikenSystem(as, workerI, dispatcher)
 }

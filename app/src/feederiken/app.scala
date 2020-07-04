@@ -7,7 +7,7 @@ import java.util.Date
 
 import pgp._
 import java.io.FileOutputStream
-import feederiken.actors.FeederikenSystem
+import feederiken.actors.{Dispatcher, FeederikenSystem}
 
 object FeederikenApp extends App {
   val UserId = "Anonymous"
@@ -95,21 +95,27 @@ object FeederikenApp extends App {
 
       case command: Node =>
         for {
-          sys <- FeederikenSystem.start("node", Some(command.configFile.toFile))
-          path <- sys.worker.path
-          _ <- console.putStrLn(s"Path is: $path")
+          j <- ZIO.getOrFail(command.j) orElse availableProcessors
+          sys <-
+            FeederikenSystem.start(command.nodeName, command.configFile.toFile)
+          dispatcher <- sys.select(command.dispatcherPath)
+          _ <- sys.attachTo(dispatcher, j)
           _ <- IO.never // Let actors work until interrupted
         } yield ()
 
       case command: Coordinator =>
         for {
-          sys <- FeederikenSystem.start("coordinator")
-          remoteWorkers <- ZIO.foreach(command.nodes.toList)(sys.select(_))
-          workers =
-            Option.when(command.localNode)(sys.worker).toList ++ remoteWorkers
+          j <- ZIO.getOrFail(command.j) orElse availableProcessors
+          sys <-
+            FeederikenSystem.start("coordinator", command.configFile.toFile)
+          dispatcher <- sys.dispatcher
+          dispatcherPath <- dispatcher.path
+          _ <- console.putStrLn(s"Path: $dispatcherPath")
           prefix = command.prefix.toList
-
-          exit <- sys.executeOn(workers) {
+          _ <- RIO.when(command.localNode) {
+            sys.attachTo(dispatcher, j)
+          }
+          exit <- sys.execute {
             for {
               result <- performSearch(prefix)
               ring <- makeRing(result, UserId)

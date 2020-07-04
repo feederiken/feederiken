@@ -6,13 +6,16 @@ import zio.actors._
 import feederiken.Env
 
 object Worker {
+  type E = Any
+  type A = Any
   sealed trait State
-  case object Ready extends State
-  case class Busy(fiber: Fiber[Any, Any]) extends State
+  private case object Ready extends State
+  private case class Busy(fiber: Fiber[Nothing, Unit]) extends State
+  def initial: State = Ready
 
   sealed trait Commands[+_]
-  case class Start(job: ZIO[Env, Any, Any]) extends Commands[Unit]
-  case object Poll extends Commands[Option[Exit[Any, Any]]]
+  case class Start(job: ZIO[Env, E, A], dispatcher: Dispatcher)
+      extends Commands[Unit]
   case object Reset extends Commands[Unit]
 
   object Interpreter extends Actor.Stateful[Env, State, Commands] {
@@ -22,14 +25,10 @@ object Worker {
         context: Context,
     ): RIO[Env, (State, A)] =
       (state, msg) match {
-        case (Ready, Start(job)) =>
+        case (Ready, Start(job, dispatcher)) =>
           for {
-            fiber <- job.fork
+            fiber <- job.run.>>= { dispatcher ? Dispatcher.Done(_) }.orDie.fork
           } yield (Busy(fiber), ())
-        case (Busy(fiber), Poll) =>
-          for {
-            exit <- fiber.poll
-          } yield (state, exit)
         case (Busy(fiber), Reset) =>
           for {
             _ <- fiber.interrupt
