@@ -1,6 +1,6 @@
-import mill._, scalalib._
+import mill._, scalalib._, scalafmt._
 
-object app extends ScalaModule {
+object app extends ScalaModule with ScalafmtModule {
   def scalaVersion = "2.13.2"
 
   def ivyDeps = Agg(
