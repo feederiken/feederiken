@@ -74,7 +74,7 @@ object FeederikenApp extends App {
     command match {
       case command: Bench =>
         for {
-          threadCount <- ZIO.getOrFail(command.j) orElse availableProcessors
+          threadCount <- command.j.fold(availableProcessors.map(2*_))(UIO(_))
           n = command.n
           creationTime <- now
           _ <- log.info(
@@ -95,7 +95,7 @@ object FeederikenApp extends App {
 
       case command: Search =>
         for {
-          threadCount <- ZIO.getOrFail(command.j) orElse availableProcessors
+          threadCount <- command.j.fold(availableProcessors.map(2*_))(UIO(_))
           creationTime <- now
 
           // bruteforce in parallel
