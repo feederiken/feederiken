@@ -15,7 +15,7 @@ import org.bouncycastle.openpgp.operator.jcajce._
 trait Service {
   def keyPairGenerator: UManaged[KeyPairGenerator]
   def genKeyPair(kpg: KeyPairGenerator): UIO[KeyPair]
-  def dateKeyPair(rawkp: KeyPair)(creationTime: Date): UIO[DatedKeyPair]
+  def computeFpr(kp: DatedKeyPair): UIO[Chunk[Byte]]
   def makeRing(kp: DatedKeyPair, userId: String): UIO[KeyRing]
   def loadRing(in: InputStream): ZIO[blocking.Blocking, IOException, KeyRing]
   def saveRing(
@@ -34,8 +34,11 @@ private class BouncyCastleService(provider: BouncyCastleProvider)
   def genKeyPair(kpg: KeyPairGenerator) =
     UIO(kpg.generateKeyPair())
 
-  def dateKeyPair(rawkp: KeyPair)(creationTime: Date) =
-    UIO(new JcaPGPKeyPair(PublicKeyAlgorithmTags.EDDSA, rawkp, creationTime))
+  def computeFpr(kp: DatedKeyPair): UIO[Chunk[Byte]] = UIO {
+    Chunk.fromArray(
+      new JcaPGPKeyPair(PublicKeyAlgorithmTags.EDDSA, kp.kp, kp.creationTime).getPublicKey.getFingerprint
+    )
+  }
 
   final val hashAlgorithmTag = HashAlgorithmTags.SHA256
   def makeRing(kp: DatedKeyPair, userId: String): UIO[KeyRing] =
@@ -46,18 +49,19 @@ private class BouncyCastleService(provider: BouncyCastleProvider)
           .build()
           .get(hashAlgorithmTag)
       }
+      jcakp = new JcaPGPKeyPair(PublicKeyAlgorithmTags.EDDSA, kp.kp, kp.creationTime)
       certificationLevel = PGPSignature.POSITIVE_CERTIFICATION
       hashedPcks = null: PGPSignatureSubpacketVector
       unhashedPcks = null: PGPSignatureSubpacketVector
       keySignerBuilder = new JcaPGPContentSignerBuilder(
-        kp.getPublicKey.getAlgorithm,
+        jcakp.getPublicKey.getAlgorithm,
         hashAlgorithmTag,
       ).setProvider(provider)
       keyEncryptor = null: PBESecretKeyEncryptor
       ring <- UIO {
         new PGPKeyRingGenerator(
           certificationLevel,
-          kp,
+          jcakp,
           userId,
           checksumCalculator,
           hashedPcks,

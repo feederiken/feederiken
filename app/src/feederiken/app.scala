@@ -26,7 +26,7 @@ object FeederikenApp extends App {
         kpg <- keyPairGenerator
       } yield for {
         kp <- genKeyPair(kpg)
-        batch <- creationTimeRange.mapM(dateKeyPair(kp)(_))
+        batch = creationTimeRange.map(DatedKeyPair(kp, _))
       } yield batch
     }
   }
@@ -34,8 +34,8 @@ object FeederikenApp extends App {
   def performSearch(prefix: Seq[Byte]) =
     for {
       creationTime <- now
-      stream = genCandidates(creationTime).filter {
-        _.getPublicKey.getFingerprint.startsWith(prefix)
+      stream = genCandidates(creationTime).filterM { kp =>
+        computeFpr(kp).map { _.startsWith(prefix) }
       }
       result <- stream.take(1).runHead.someOrFailException
       _ <- log.info("Found matching keypair")
@@ -116,14 +116,10 @@ object FeederikenApp extends App {
             sys.attachTo(dispatcher, j)
           }
           exit <- sys.execute {
-            for {
-              result <- performSearch(prefix)
-              ring <- makeRing(result, UserId)
-            } yield ring.getEncoded // The full object wont serialize
+            performSearch(prefix)
           }
-          encodedResult <- ZIO.done(exit)
-          buf = new java.io.ByteArrayInputStream(encodedResult)
-          ring <- loadRing(buf)
+          result <- ZIO.done(exit)
+          ring <- makeRing(result, UserId)
           _ <- printRing(ring)
         } yield ()
     }
