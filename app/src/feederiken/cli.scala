@@ -27,10 +27,10 @@ case class Bench(j: Option[Int], n: Int) extends Command
 object CLI {
   import Opts._
 
-  private val j = option[Int]("j", "# of concurrent threads to use")
+  private val j = option[Int]("parallelism-level", "# of concurrent threads to use", short="j")
     .validate("j must be positive")(_ > 0)
     .orNone
-  private val n = option[Int]("n", "how many keys to generate for benchmarking")
+  private val n = option[Int]("iterations", "how many keys to generate for benchmarking", short="n")
     .withDefault(10000)
     .validate("n must be positive")(_ > 0)
   private val prefix = option[String]("prefix", "key prefix to look for (hex)")
