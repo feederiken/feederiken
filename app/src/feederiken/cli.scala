@@ -12,7 +12,7 @@ import cats.data._
  * Laws
  * - `score` is commutative.
  */
-sealed abstract class Mode {
+sealed abstract class Mode extends Product with Serializable {
   /**
    * Rate the similarity of two byte sequences according to the criteria. Both sequences may be of any length. This operation must be commutative.
    */
@@ -52,7 +52,7 @@ object Mode {
   }
 }
 
-sealed abstract class Command
+sealed abstract class Command extends Product with Serializable
 case class Search(j: Option[Int], goal: Chain[Byte], mode: Mode) extends Command
 case class Bench(j: Option[Int], n: Int) extends Command
 
