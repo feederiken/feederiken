@@ -30,36 +30,49 @@ object FeederikenApp extends App {
     }
   }
 
-  def fingerprint(k: DatedKeyPair): IndexedSeq[Byte] = k.getPublicKey.getFingerprint.toVector
+  def fingerprint(k: DatedKeyPair): IndexedSeq[Byte] =
+    k.getPublicKey.getFingerprint.toVector
 
-  def parallelize[R, E, O](threadCount: Int, stream: ZStream[R, E, O]): ZStream[R, E, O] =
+  def parallelize[R, E, O](
+      threadCount: Int,
+      stream: ZStream[R, E, O],
+  ): ZStream[R, E, O] =
     ZStream.mergeAllUnbounded()(Seq.fill(threadCount)(stream): _*)
 
-  def performSearch(threadCount: Int, goal: IndexedSeq[Byte], mode: Mode, minScore: Int, maxScore: Int) = {
+  def performSearch(
+      threadCount: Int,
+      goal: IndexedSeq[Byte],
+      mode: Mode,
+      minScore: Int,
+      maxScore: Int,
+  ) = {
     def rec(minScore: Int): RIO[Env, Unit] =
       for {
         creationTime <- now
         stream = genCandidates(creationTime).filter { k =>
           mode.score(goal, fingerprint(k)) >= minScore
         }
-        result <- parallelize(threadCount, stream).take(1).runHead.someOrFailException
+        result <-
+          parallelize(threadCount, stream).take(1).runHead.someOrFailException
         currentScore = mode.score(goal, fingerprint(result))
         _ <- log.info(s"Found matching key (score=$currentScore)")
         _ <- saveResult(result)
-        r <- RIO.when(currentScore < maxScore){
-          rec(currentScore+1)
+        r <- RIO.when(currentScore < maxScore) {
+          rec(currentScore + 1)
         }
-      } yield r  // ensure tail-call
+      } yield r // ensure tail-call
     rec(minScore)
   }
 
-  def saveResult(result: DatedKeyPair) = for {
-    _ <- log.info("Saving results to results.asc")
-    ring <- makeRing(result, UserId)
-    _ <- Managed
-        .fromAutoCloseable(IO(new FileOutputStream("results.asc", true)))
-        .use(saveRing(ring, _))
-      } yield ()
+  def saveResult(result: DatedKeyPair) =
+    for {
+      _ <- log.info("Saving results to results.asc")
+      ring <- makeRing(result, UserId)
+      _ <-
+        Managed
+          .fromAutoCloseable(IO(new FileOutputStream("results.asc", true)))
+          .use(saveRing(ring, _))
+    } yield ()
 
   def measureFreq[R, E](
       action: ZIO[R, E, Any]
@@ -74,7 +87,7 @@ object FeederikenApp extends App {
     command match {
       case command: Bench =>
         for {
-          threadCount <- command.j.fold(availableProcessors.map(2*_))(UIO(_))
+          threadCount <- command.j.fold(availableProcessors.map(2 * _))(UIO(_))
           n = command.n
           creationTime <- now
           _ <- log.info(
@@ -95,12 +108,14 @@ object FeederikenApp extends App {
 
       case command: Search =>
         for {
-          threadCount <- command.j.fold(availableProcessors.map(2*_))(UIO(_))
+          threadCount <- command.j.fold(availableProcessors.map(2 * _))(UIO(_))
           creationTime <- now
 
           goal = command.goal.toVector
           mode = command.mode
-          maxScore = command.maxScore.foldRight(mode.maxScore(goal, FingerprintLength))(_ min _)
+          maxScore = command.maxScore.foldRight(
+            mode.maxScore(goal, FingerprintLength)
+          )(_ min _)
           minScore = command.minScore.foldRight(maxScore)(_ min _)
           _ <- performSearch(threadCount, goal, mode, minScore, maxScore)
         } yield ()
