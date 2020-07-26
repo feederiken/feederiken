@@ -30,11 +30,11 @@ object FeederikenApp extends App {
     }
   }
 
-  def performSearch(prefix: Seq[Byte]) =
+  def performSearch(goal: IndexedSeq[Byte], mode: Mode) =
     for {
       creationTime <- now
-      stream = genCandidates(creationTime).filter {
-        _.getPublicKey.getFingerprint.startsWith(prefix)
+      stream = genCandidates(creationTime).filter { k =>
+        mode.score(k.getPublicKey.getFingerprint, goal)
       }
       result <- stream.take(1).runHead.someOrFailException
       _ <- log.info("Found matching keypair")
@@ -84,7 +84,7 @@ object FeederikenApp extends App {
           creationTime <- now
 
           // bruteforce in parallel
-          search = performSearch(command.prefix.toVector)
+          search = performSearch(command.goal.toVector, command.mode)
           result <- Iterable.fill(threadCount)(search).reduce(_ raceFirst _)
 
           // append result to results.asc
