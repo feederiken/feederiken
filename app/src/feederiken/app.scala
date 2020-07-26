@@ -30,22 +30,36 @@ object FeederikenApp extends App {
     }
   }
 
-  def performSearch(goal: IndexedSeq[Byte], mode: Mode) =
-    for {
-      creationTime <- now
-      maxScore = mode.maxScore(goal, FingerprintLength)
-      stream = genCandidates(creationTime).filter { k =>
-        mode.score(k.getPublicKey.getFingerprint, goal) >= maxScore
-      }
-      result <- stream.take(1).runHead.someOrFailException
-      _ <- log.info("Found matching keypair")
-    } yield result
+  def fingerprint(k: DatedKeyPair): IndexedSeq[Byte] = k.getPublicKey.getFingerprint.toVector
 
-  def printRing(ring: KeyRing) =
-    log.info("Saving results to results.asc") *>
-      Managed
+  def parallelize[R, E, O](threadCount: Int, stream: ZStream[R, E, O]): ZStream[R, E, O] =
+    ZStream.mergeAllUnbounded()(Seq.fill(threadCount)(stream): _*)
+
+  def performSearch(threadCount: Int, goal: IndexedSeq[Byte], mode: Mode, minScore: Int, maxScore: Int) = {
+    def rec(minScore: Int): RIO[Env, Unit] =
+      for {
+        creationTime <- now
+        stream = genCandidates(creationTime).filter { k =>
+          mode.score(goal, fingerprint(k)) >= minScore
+        }
+        result <- parallelize(threadCount, stream).take(1).runHead.someOrFailException
+        currentScore = mode.score(goal, fingerprint(result))
+        _ <- log.info(s"Found matching key (score=$currentScore)")
+        _ <- saveResult(result)
+        r <- RIO.when(currentScore < maxScore){
+          rec(currentScore+1)
+        }
+      } yield r  // ensure tail-call
+    rec(minScore)
+  }
+
+  def saveResult(result: DatedKeyPair) = for {
+    _ <- log.info("Saving results to results.asc")
+    ring <- makeRing(result, UserId)
+    _ <- Managed
         .fromAutoCloseable(IO(new FileOutputStream("results.asc", true)))
         .use(saveRing(ring, _))
+      } yield ()
 
   def measureFreq[R, E](
       action: ZIO[R, E, Any]
@@ -84,13 +98,11 @@ object FeederikenApp extends App {
           threadCount <- command.j.fold(availableProcessors.map(2*_))(UIO(_))
           creationTime <- now
 
-          // bruteforce in parallel
-          search = performSearch(command.goal.toVector, command.mode)
-          result <- Iterable.fill(threadCount)(search).reduce(_ raceFirst _)
-
-          // append result to results.asc
-          ring <- makeRing(result, UserId)
-          _ <- printRing(ring)
+          goal = command.goal.toVector
+          mode = command.mode
+          maxScore = command.maxScore.foldRight(mode.maxScore(goal, FingerprintLength))(_ min _)
+          minScore = command.minScore.foldRight(maxScore)(_ min _)
+          _ <- performSearch(threadCount, goal, mode, minScore, maxScore)
         } yield ()
     }
 

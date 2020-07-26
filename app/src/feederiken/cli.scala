@@ -5,6 +5,7 @@ import cats.syntax.all._
 import cats.instances.list._
 import cats.data._
 import cats.instances.tuple
+import org.bouncycastle.util.Fingerprint
 
 
 /**
@@ -60,7 +61,7 @@ object Mode {
 }
 
 sealed abstract class Command extends Product with Serializable
-case class Search(j: Option[Int], goal: Chain[Byte], mode: Mode) extends Command
+case class Search(j: Option[Int], goal: Chain[Byte], mode: Mode, minScore: Option[Int], maxScore: Option[Int]) extends Command
 case class Bench(j: Option[Int], n: Int) extends Command
 
 object CLI {
@@ -83,6 +84,12 @@ object CLI {
       }
     }
   private val mode = argument[Mode]("mode").withDefault(Mode.Prefix)
+  private val minScore = option[Int]("min-score", "lower bound score to search")
+    .validate("min-score must be positive")(_ > 0)
+    .orNone
+  private val maxScore = option[Int]("max-score", "upper bound score to search")
+    .validate("max-score must be positive")(_ > 0)
+    .orNone
 
   private def bench =
     Command[Bench]("bench", "benchmark CPU hashrate") {
@@ -91,7 +98,7 @@ object CLI {
 
   private def search =
     Command[Search]("search", "search for a valid PGP key with a fingerprint matching the goal according to the mode") {
-      (j, goal, mode).mapN(Search)
+      (j, goal, mode, minScore, maxScore).mapN(Search)
     }
 
   def top =
