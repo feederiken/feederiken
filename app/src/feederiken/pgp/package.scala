@@ -14,6 +14,9 @@ package object pgp {
   type DatedKeyPair = org.bouncycastle.openpgp.PGPKeyPair
   type KeyRing = org.bouncycastle.openpgp.PGPSecretKeyRing
 
+  // Length of PGP fingerprints in bytes
+  final val FingerprintLength = 20
+
   /** Resource required to generate a sequence of random keypairs.
     */
   def keyPairGenerator: URManaged[PGP, KeyPairGenerator] =

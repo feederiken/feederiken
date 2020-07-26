@@ -33,8 +33,9 @@ object FeederikenApp extends App {
   def performSearch(goal: IndexedSeq[Byte], mode: Mode) =
     for {
       creationTime <- now
+      maxScore = mode.maxScore(goal, FingerprintLength)
       stream = genCandidates(creationTime).filter { k =>
-        mode.score(k.getPublicKey.getFingerprint, goal)
+        mode.score(k.getPublicKey.getFingerprint, goal) >= maxScore
       }
       result <- stream.take(1).runHead.someOrFailException
       _ <- log.info("Found matching keypair")

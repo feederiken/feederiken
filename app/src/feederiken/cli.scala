@@ -4,6 +4,7 @@ import com.monovore.decline._
 import cats.syntax.all._
 import cats.instances.list._
 import cats.data._
+import cats.instances.tuple
 
 
 /**
@@ -11,12 +12,18 @@ import cats.data._
  *
  * Laws
  * - `score` is commutative.
+ * - `score` returns an integer less than or equal to `maxScore` with the appropriate arguments.
+ * - There must exist a sequence that scores `maxScore`.
  */
 sealed abstract class Mode extends Product with Serializable {
   /**
    * Rate the similarity of two byte sequences according to the criteria. Both sequences may be of any length. This operation must be commutative.
    */
-  def score(fpr1: IndexedSeq[Byte], fpr2: IndexedSeq[Byte]): Boolean
+  def score(fpr1: IndexedSeq[Byte], fpr2: IndexedSeq[Byte]): Int
+  /**
+   * Compute the highest possible similarity score according to the criteria.
+   */
+  def maxScore(fpr1: IndexedSeq[Byte], fpr2len: Int): Int
 }
 
 object Mode {
@@ -24,20 +31,20 @@ object Mode {
     * A mode to search for a key with a given prefix.
     */
   case object Prefix extends Mode {
-    override def score(fpr1: IndexedSeq[Byte], fpr2: IndexedSeq[Byte]): Boolean = {
-      val len = fpr1.length min fpr2.length
-      fpr1.take(len) sameElements fpr2.take(len)
-    }
+    override def score(fpr1: IndexedSeq[Byte], fpr2: IndexedSeq[Byte]): Int =
+      (fpr1.iterator zip fpr2).takeWhile(x => x._1 == x._2).length
+    override def maxScore(fpr1: IndexedSeq[Byte], fpr2len: Int): Int =
+      fpr1.length min fpr2len
   }
 
   /**
     * A mode to search for a key with a given suffix.
     */
   case object Suffix extends Mode {
-    override def score(fpr1: IndexedSeq[Byte], fpr2: IndexedSeq[Byte]): Boolean = {
-      val len = fpr1.length min fpr2.length
-      fpr1.takeRight(len) sameElements fpr2.takeRight(len)
-    }
+    override def score(fpr1: IndexedSeq[Byte], fpr2: IndexedSeq[Byte]): Int =
+      (fpr1.reverseIterator zip fpr2.reverseIterator).takeWhile(x => x._1 == x._2).length
+    override def maxScore(fpr1: IndexedSeq[Byte], fpr2len: Int): Int =
+      fpr1.length min fpr2len
   }
 
   implicit object ModeArgument extends Argument[Mode] {
