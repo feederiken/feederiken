@@ -63,7 +63,9 @@ object Mode {
   }
 }
 
-sealed abstract class Command extends Product with Serializable
+sealed abstract class Command extends Product with Serializable {
+  def j: Option[Int]
+}
 case class Search(
     j: Option[Int],
     goal: Chain[Byte],
