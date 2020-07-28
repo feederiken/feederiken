@@ -31,21 +31,47 @@ object FeederikenApp extends App {
     }
   }
 
-  def performSearch(prefix: Seq[Byte]) =
-    for {
-      creationTime <- now
-      stream = genCandidates(creationTime).filterM { kp =>
-        computeFpr(kp).map { _.startsWith(prefix) }
-      }
-      result <- stream.take(1).runHead.someOrFailException
-      _ <- log.info("Found matching keypair")
-    } yield result
+  def parallelize[R, E, O](
+      threadCount: Int,
+      stream: ZStream[R, E, O],
+  ): ZStream[R, E, O] =
+    ZStream.mergeAllUnbounded()(Seq.fill(threadCount)(stream): _*)
 
-  def printRing(ring: KeyRing) =
-    log.info("Saving results to results.asc") *>
-      Managed
-        .fromAutoCloseable(IO(new FileOutputStream("results.asc", true)))
-        .use(saveRing(ring, _))
+  def performSearch(
+      threadCount: Int,
+      goal: IndexedSeq[Byte],
+      mode: Mode,
+      minScore: Int,
+      maxScore: Int,
+  ) = {
+    def rec(minScore: Int): RIO[Env, Unit] =
+      for {
+        creationTime <- now
+        stream = genCandidates(creationTime).filterM { kp =>
+          computeFpr(kp).map(fpr => mode.score(goal, fpr) >= minScore)
+        }
+        result <-
+          parallelize(threadCount, stream).take(1).runHead.someOrFailException
+        fpr <- computeFpr(result)
+        currentScore = mode.score(goal, fpr)
+        _ <- log.info(s"Found matching key (score=$currentScore)")
+        _ <- saveResult(result)
+        r <- RIO.when(currentScore < maxScore) {
+          rec(currentScore + 1)
+        }
+      } yield r // ensure tail-call
+    rec(minScore)
+  }
+
+  def saveResult(result: DatedKeyPair) =
+    for {
+      _ <- log.info("Saving results to results.asc")
+      ring <- makeRing(result, UserId)
+      _ <-
+        Managed
+          .fromAutoCloseable(IO(new FileOutputStream("results.asc", true)))
+          .use(saveRing(ring, _))
+    } yield ()
 
   def measureFreq[R, E](
       action: ZIO[R, E, Any]
@@ -60,7 +86,7 @@ object FeederikenApp extends App {
     command match {
       case command: Bench =>
         for {
-          threadCount <- command.j.fold(availableProcessors.map(2*_))(UIO(_))
+          threadCount <- command.j.fold(availableProcessors.map(2 * _))(UIO(_))
           n = command.n
           creationTime <- now
           _ <- log.info(
@@ -81,16 +107,16 @@ object FeederikenApp extends App {
 
       case command: Search =>
         for {
-          threadCount <- command.j.fold(availableProcessors.map(2*_))(UIO(_))
+          threadCount <- command.j.fold(availableProcessors.map(2 * _))(UIO(_))
           creationTime <- now
 
-          // bruteforce in parallel
-          search = performSearch(command.prefix.toVector)
-          result <- Iterable.fill(threadCount)(search).reduce(_ raceFirst _)
-
-          // append result to results.asc
-          ring <- makeRing(result, UserId)
-          _ <- printRing(ring)
+          goal = command.goal.toVector
+          mode = command.mode
+          maxScore = command.maxScore.foldRight(
+            mode.maxScore(goal, FingerprintLength)
+          )(_ min _)
+          minScore = command.minScore.foldRight(maxScore)(_ min _)
+          _ <- performSearch(threadCount, goal, mode, minScore, maxScore)
         } yield ()
 
       case command: Node =>
@@ -111,16 +137,17 @@ object FeederikenApp extends App {
           dispatcher <- sys.dispatcher
           dispatcherPath <- dispatcher.path
           _ <- console.putStrLn(s"Path: $dispatcherPath")
-          prefix = command.prefix.toList
+          goal = command.goal.toVector
+          mode = command.mode
+          maxScore = command.maxScore.foldRight(
+            mode.maxScore(goal, FingerprintLength)
+          )(_ min _)
+          minScore = command.minScore.foldRight(maxScore)(_ min _)
           _ <- RIO.when(command.localNode) {
             sys.attachTo(dispatcher, j)
           }
-          exit <- sys.execute {
-            performSearch(prefix)
-          }
-          result <- ZIO.done(exit)
-          ring <- makeRing(result, UserId)
-          _ <- printRing(ring)
+          _ <- log.error("coordinator not implemented") // TODO
+          _ <- ZIO(???)
         } yield ()
     }
 
