@@ -1,6 +1,6 @@
 package object feederiken {
 
-  import actors.FeederikenSystem
+  import actors._
   import pgp._
 
   import zio._, zio.stream._, zio.logging._
@@ -18,19 +18,21 @@ package object feederiken {
     _ <- log.info(s"Detected $n parallel threads")
   } yield n
 
-  def genCandidates(
-      creationTime: Date
-  ): ZStream[Env, Throwable, DatedKeyPair] = {
-    val creationTimeRange = Chunk.fromIterable(for {
-      t <- 0 until 1024
-    } yield Date.from(creationTime.toInstant().minusSeconds(t)))
-    ZStream {
+  def genCandidates: ZStream[Env, Throwable, DatedKeyPair] = {
+    ZStream.unwrap {
       for {
-        kpg <- keyPairGenerator
-      } yield for {
-        kp <- genKeyPair(kpg)
-        batch <- creationTimeRange.mapM(dateKeyPair(kp, _))
-      } yield batch
+        creationTime <- now
+        creationTimeRange = Chunk.fromIterable(for {
+          t <- 0 until 1024
+        } yield Date.from(creationTime.toInstant().minusSeconds(t)))
+      } yield ZStream {
+        for {
+          kpg <- keyPairGenerator
+        } yield for {
+          kp <- genKeyPair(kpg)
+          batch <- creationTimeRange.mapM(dateKeyPair(kp, _))
+        } yield batch
+      }
     }
   }
 
@@ -42,34 +44,6 @@ package object feederiken {
         threadCount <- SearchParameters.threadCount
       } yield ZStream.mergeAllUnbounded()(Seq.fill(threadCount)(stream): _*)
     }
-
-  def performSearch(
-      threadCount: Int,
-      goal: Chunk[Byte],
-      mode: Mode,
-      minScore: Int,
-      maxScore: Int,
-  ) = {
-    def rec(minScore: Int): RIO[Env, Unit] =
-      for {
-        creationTime <- now
-        stream = parallelize {
-          genCandidates(creationTime).filter { kp =>
-            mode.score(goal, kp.fingerprint) >= minScore
-          }
-        }
-        result <- stream.take(1).runHead.someOrFailException
-        currentScore = mode.score(goal, result.fingerprint)
-        _ <- log.info(s"Found matching key (score=$currentScore)")
-        _ <- saveResult(result)
-        r <-
-          if (currentScore < maxScore)
-            rec(currentScore + 1)
-          else
-            IO.unit
-      } yield r // ensure tail-call
-    rec(minScore)
-  }
 
   def saveResult(result: DatedKeyPair) =
     for {
@@ -96,12 +70,11 @@ package object feederiken {
         for {
           threadCount <- SearchParameters.threadCount
           n = command.n
-          creationTime <- now
           _ <- log.info(
             s"Benchmarking $n iterations ${if (threadCount == 1) "without parallelism"
             else s"$threadCount times concurrently"}"
           )
-          stream = parallelize(genCandidates(creationTime))
+          stream = parallelize(genCandidates)
           nfreq <- measureFreq(stream.take(n).runDrain)
           freq = n * nfreq
           _ <- console.putStrLn(
@@ -111,8 +84,10 @@ package object feederiken {
 
       case command: Search =>
         for {
-          threadCount <- SearchParameters.threadCount
-          creationTime <- now
+          sys <- FeederikenSystem.start(
+            "coordinator",
+            command.configFile.map(_.toFile),
+          )
 
           goal = command.goal.iterator.to(ChunkLike)
           mode = command.mode
@@ -120,38 +95,22 @@ package object feederiken {
             mode.maxScore(goal, FingerprintLength)
           )(_ min _)
           minScore = command.minScore.foldRight(maxScore)(_ min _)
-          _ <- performSearch(threadCount, goal, mode, minScore, maxScore)
+          _ <- IO.when(command.localSearch) {
+            sys.attachTo(sys.dispatcher)
+          }
+          _ <- sys.search(goal, mode, minScore, maxScore)
+          _ <- IO.never // Let actors work until interrupted
         } yield ()
 
       case command: Node =>
         for {
-          j <- ZIO.getOrFail(command.j) orElse availableProcessors
-          sys <-
-            FeederikenSystem.start(command.nodeName, command.configFile.toFile)
+          sys <- FeederikenSystem.start(
+            command.nodeName,
+            Some(command.configFile.toFile),
+          )
           dispatcher <- sys.select(command.dispatcherPath)
-          _ <- sys.attachTo(dispatcher, j)
+          _ <- sys.attachTo(dispatcher)
           _ <- IO.never // Let actors work until interrupted
-        } yield ()
-
-      case command: Coordinator =>
-        for {
-          j <- ZIO.getOrFail(command.j) orElse availableProcessors
-          sys <-
-            FeederikenSystem.start("coordinator", command.configFile.toFile)
-          dispatcher <- sys.dispatcher
-          dispatcherPath <- dispatcher.path
-          _ <- console.putStrLn(s"Path: $dispatcherPath")
-          goal = command.goal.iterator.to(ChunkLike)
-          mode = command.mode
-          maxScore = command.maxScore.foldRight(
-            mode.maxScore(goal, FingerprintLength)
-          )(_ min _)
-          minScore = command.minScore.foldRight(maxScore)(_ min _)
-          _ <- RIO.when(command.localNode) {
-            sys.attachTo(dispatcher, j)
-          }
-          _ <- log.error("coordinator not implemented") // TODO
-          _ <- ZIO(???)
         } yield ()
     }).provideSomeLayer(SearchParameters.fromCommand(command))
 }

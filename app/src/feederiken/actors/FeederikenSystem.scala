@@ -1,54 +1,44 @@
 package feederiken.actors
 
-import zio._
-import zio.actors._
-import zio.duration._
+import zio._, zio.actors._, zio.duration._, zio.logging._
 import java.io.File
-import zio.logging.log
+
+import feederiken.Mode
 
 final class FeederikenSystem(
     protected val as: ActorSystem,
-    protected val workerI: Ref[Int],
-    val dispatcher: RIO[feederiken.Env, Dispatcher],
+    val collector: Collector,
+    val dispatcher: Dispatcher,
+    val worker: Worker,
 ) {
-  def select[F[+_]](path: String) = as.select(path)
+  def select[F[+_]](path: String): Task[ActorRef[Any]] = as.select(path)
 
-  def execute[E, A](
-      job: ZIO[feederiken.Env, E, A]
-  ): RIO[feederiken.Env, Exit[E, A]] =
-    for {
-      dispatcher <- this.dispatcher
-      p <- Promise.make[Any, Any]
-      exit <- (dispatcher ? Dispatcher.Start(job, p))
-        .bracket_((dispatcher ? Dispatcher.Reset).orDie) {
-          p.await.run.map(_.asInstanceOf[Exit[E, A]])
-        }
-    } yield exit
+  def attachTo(dispatcher: Dispatcher): Task[Unit] =
+    dispatcher ! Dispatcher.Attach(worker)
 
-  protected val spawnWorker: RIO[feederiken.Env, Worker] = for {
-    i <- workerI.getAndUpdate(_ + 1)
-    w <- as.make(
-      s"worker$i",
-      actors.Supervisor.none,
-      Worker.initial,
-      Worker.Interpreter,
-    )
-  } yield w
-
-  def attachTo(dispatcher: Dispatcher, j: Int = 1) =
-    (for {
-      worker <- spawnWorker
-      _ <- dispatcher ? Dispatcher.Attach(worker)
-    } yield ()).repeat(Schedule.recurs(j - 1))
+  def search(
+      goal: Chunk[Byte],
+      mode: Mode,
+      minScore: Int,
+      maxScore: Int,
+  ): Task[Unit] =
+    collector ! Collector.Start(Job(goal, mode, minScore, maxScore, collector))
 }
 object FeederikenSystem {
-  def start(name: String, configFile: File) =
+
+  def start(name: String, configFile: Option[File]) =
     for {
-      as <- ActorSystem(name, Some(configFile))
+      as <- ActorSystem(name, configFile)
       sup = actors.Supervisor.none
-      workerI <- Ref.make(0)
       dispatcher <-
         as.make("dispatcher", sup, Dispatcher.initial, Dispatcher.Interpreter)
-          .memoize
-    } yield new FeederikenSystem(as, workerI, dispatcher)
+      saver <- as.make("saver", sup, Saver.initial, Saver.Interpreter)
+      collector <- as.make(
+        "collector",
+        sup,
+        Collector.initial(dispatcher, saver),
+        Collector.Interpreter,
+      )
+      worker <- as.make("worker", sup, Worker.initial, Worker.Interpreter)
+    } yield new FeederikenSystem(as, collector, dispatcher, worker)
 }

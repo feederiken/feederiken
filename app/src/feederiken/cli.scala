@@ -68,6 +68,8 @@ sealed abstract class Command extends Product with Serializable {
 }
 case class Search(
     j: Option[Int],
+    configFile: Option[Path],
+    localSearch: Boolean,
     goal: Chain[Byte],
     mode: Mode,
     minScore: Option[Int],
@@ -79,15 +81,6 @@ case class Node(
     configFile: Path,
     nodeName: String,
     dispatcherPath: String,
-) extends Command
-case class Coordinator(
-    j: Option[Int],
-    configFile: Path,
-    localNode: Boolean,
-    goal: Chain[Byte],
-    mode: Mode,
-    minScore: Option[Int],
-    maxScore: Option[Int],
 ) extends Command
 
 object CLI {
@@ -105,8 +98,11 @@ object CLI {
   ).withDefault(10000)
     .validate("n must be positive")(_ > 0)
   private val dispatcherPath = argument[String]("dispatcher-path")
-  private val localNode =
-    flag("no-local-node", "don't start a search node on this machine").orTrue
+  private val localSearch =
+    flag(
+      "no-local-search",
+      "don't search on this machine, rely on remote nodes",
+    ).orTrue
   private val goal = argument[String]("goal")
     .withDefault("feed")
     .mapValidated {
@@ -117,7 +113,9 @@ object CLI {
         }
       }
     }
-  private val configFile = argument[Path]("config_file")
+  private val configFileO =
+    option[Path]("config-file", "actor system config file").orNone
+  private val configFileA = argument[Path]("config_file")
   private val nodeName = argument[String]("node_name")
   private val mode = argument[Mode]("mode").withDefault(Mode.Prefix)
   private val minScore = option[Int]("min-score", "lower bound score to search")
@@ -137,23 +135,16 @@ object CLI {
       "search",
       "search for a valid PGP key with a fingerprint matching the goal according to the mode",
     ) {
-      (j, goal, mode, minScore, maxScore).mapN(Search)
+      (j, configFileO, localSearch, goal, mode, minScore, maxScore).mapN(Search)
     }
 
   private def node =
     Command[Node]("node", "serve as a node in a distributed search") {
-      (j, configFile, nodeName, dispatcherPath).mapN(Node)
-    }
-
-  private def coordinator =
-    Command[Coordinator]("coordinator", "coordinate a distributed search") {
-      (j, configFile, localNode, goal, mode, minScore, maxScore).mapN(
-        Coordinator
-      )
+      (j, configFileA, nodeName, dispatcherPath).mapN(Node)
     }
 
   def top =
     Command[Command]("feederiken", "Vanity PGP key generator") {
-      subcommands(search, bench, node, coordinator)
+      subcommands(search, bench, node)
     }
 }

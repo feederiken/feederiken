@@ -1,21 +1,17 @@
 package feederiken.actors
 
-import zio._
-import zio.actors._
+import zio._, zio.actors._
 
 import feederiken.Env
 
 object Worker {
-  type E = Any
-  type A = Any
-  sealed trait State
+  sealed trait State extends Product with Serializable
   private case object Ready extends State
   private case class Busy(fiber: Fiber[Nothing, Unit]) extends State
   def initial: State = Ready
 
-  sealed trait Commands[+_]
-  case class Start(job: ZIO[Env, E, A], dispatcher: Dispatcher)
-      extends Commands[Unit]
+  sealed trait Commands[+_] extends Product with Serializable
+  case class Start(job: Job) extends Commands[Unit]
   case object Reset extends Commands[Unit]
 
   object Interpreter extends Actor.Stateful[Env, State, Commands] {
@@ -24,18 +20,27 @@ object Worker {
         msg: Commands[A],
         context: Context,
     ): RIO[Env, (State, A)] =
-      (state, msg) match {
-        case (Ready, Start(job, dispatcher)) =>
-          for {
-            fiber <- job.run.>>= { dispatcher ? Dispatcher.Done(_) }.orDie.fork
-          } yield (Busy(fiber), ())
-        case (Busy(fiber), Reset) =>
-          for {
-            _ <- fiber.interrupt
-          } yield (Ready, ())
-        case (_, Reset) => UIO(Ready, ())
-        case _ =>
-          IO.fail(new IllegalStateException(s"$state cannot perform $msg"))
+      state match {
+        case Ready =>
+          msg match {
+            case Reset => IO.succeed(Ready, ())
+            case Start(job) =>
+              for {
+                fiber <- job.perform.orDie.fork
+              } yield (Busy(fiber), ())
+          }
+        case Busy(fiber) =>
+          msg match {
+            case Reset =>
+              for {
+                _ <- fiber.interrupt
+              } yield (Ready, ())
+            case Start(job) =>
+              for {
+                _ <- fiber.interrupt
+                fiber <- job.perform.orDie.fork
+              } yield (Busy(fiber), ())
+          }
       }
   }
 }
