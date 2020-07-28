@@ -4,9 +4,7 @@ import com.monovore.decline._
 import cats.syntax.all._
 import cats.instances.list._
 import cats.data._
-import cats.instances.tuple
 import java.nio.file.Path
-import org.bouncycastle.util.Fingerprint
 
 /**
   * A mode of rating key fingerprints. An instance allows the brute-forcing process to compare its finding to the goal of the search.
@@ -97,8 +95,7 @@ object CLI {
     "parallelism-level",
     "# of concurrent threads to use",
     short = "j",
-  ).validate("j must be positive")(_ > 0)
-    .orNone
+  ).validate("j must be positive")(_ > 0).orNone
   private val n = option[Int](
     "iterations",
     "how many keys to generate for benchmarking",
@@ -148,7 +145,9 @@ object CLI {
 
   private def coordinator =
     Command[Coordinator]("coordinator", "coordinate a distributed search") {
-      (j, configFile, localNode, goal, mode, minScore, maxScore).mapN(Coordinator)
+      (j, configFile, localNode, goal, mode, minScore, maxScore).mapN(
+        Coordinator
+      )
     }
 
   def top =
