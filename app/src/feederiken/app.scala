@@ -26,7 +26,7 @@ object FeederikenApp extends App {
         kpg <- keyPairGenerator
       } yield for {
         kp <- genKeyPair(kpg)
-        batch = creationTimeRange.map(DatedKeyPair(kp, _))
+        batch <- creationTimeRange.mapM(dateKeyPair(kp, _))
       } yield batch
     }
   }
@@ -39,7 +39,7 @@ object FeederikenApp extends App {
 
   def performSearch(
       threadCount: Int,
-      goal: IndexedSeq[Byte],
+      goal: Chunk[Byte],
       mode: Mode,
       minScore: Int,
       maxScore: Int,
@@ -47,13 +47,12 @@ object FeederikenApp extends App {
     def rec(minScore: Int): RIO[Env, Unit] =
       for {
         creationTime <- now
-        stream = genCandidates(creationTime).filterM { kp =>
-          computeFpr(kp).map(fpr => mode.score(goal, fpr) >= minScore)
+        stream = genCandidates(creationTime).filter { kp =>
+          mode.score(goal, kp.fingerprint) >= minScore
         }
         result <-
           parallelize(threadCount, stream).take(1).runHead.someOrFailException
-        fpr <- computeFpr(result)
-        currentScore = mode.score(goal, fpr)
+        currentScore = mode.score(goal, result.fingerprint)
         _ <- log.info(s"Found matching key (score=$currentScore)")
         _ <- saveResult(result)
         r <- RIO.when(currentScore < maxScore) {
@@ -110,7 +109,7 @@ object FeederikenApp extends App {
           threadCount <- command.j.fold(availableProcessors.map(2 * _))(UIO(_))
           creationTime <- now
 
-          goal = command.goal.toVector
+          goal = command.goal.iterator.to(ChunkLike)
           mode = command.mode
           maxScore = command.maxScore.foldRight(
             mode.maxScore(goal, FingerprintLength)
@@ -137,7 +136,7 @@ object FeederikenApp extends App {
           dispatcher <- sys.dispatcher
           dispatcherPath <- dispatcher.path
           _ <- console.putStrLn(s"Path: $dispatcherPath")
-          goal = command.goal.toVector
+          goal = command.goal.iterator.to(ChunkLike)
           mode = command.mode
           maxScore = command.maxScore.foldRight(
             mode.maxScore(goal, FingerprintLength)
