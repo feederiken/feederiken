@@ -11,7 +11,7 @@ object SearchParameters {
   def fromCommand(command: Command): URLayer[Services, Has[SearchParameters]] =
     ZLayer.fromEffect {
       for {
-        threadCount <- command.j.fold(availableProcessors.map(2 * _))(UIO(_))
+        threadCount <- command.j.fold(availableProcessors)(UIO(_))
       } yield SearchParameters(threadCount)
     }
 

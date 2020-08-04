@@ -53,13 +53,12 @@ package object feederiken {
       _ <- saveRing(ring, out)
     } yield ()
 
-  def measureFreq[R, E](
-      action: ZIO[R, E, Any]
-  ): ZIO[R with clock.Clock, E, Double] =
+  def measureFreq[I](n: Int) =
     for {
-      r <- action.timed
-      t = r._1
-      freq = 1e9 / t.toNanos
+      _ <- ZSink.take[I](n/10)  // warmup
+      r <- ZSink.take[I](n).timed
+      t = r._2
+      freq = 1e9 / t.toNanos * n
     } yield freq
 
   def interpret(command: Command): RIO[ZEnv with PGP with Logging, Unit] =
@@ -70,11 +69,10 @@ package object feederiken {
           n = command.n
           _ <- log.info(
             s"Benchmarking $n iterations ${if (threadCount == 1) "without parallelism"
-            else s"$threadCount times concurrently"}"
+            else s"over $threadCount threads"}"
           )
           stream = parallelize(genCandidates)
-          nfreq <- measureFreq(stream.take(n).runDrain)
-          freq = n * nfreq
+          freq <- stream.run(measureFreq(n))
           _ <- console.putStrLn(
             s"${if (threadCount == 1) "Single-threaded" else "Parallel"} hashrate: $freq Hz"
           )

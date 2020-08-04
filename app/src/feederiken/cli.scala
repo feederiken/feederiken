@@ -116,7 +116,7 @@ object CLI {
     "iterations",
     "how many keys to generate for benchmarking",
     short = "n",
-  ).withDefault(10000)
+  ).withDefault(1000000)
     .validate("n must be positive")(_ > 0)
   private val dispatcherPath = argument[String]("dispatcher-path")
   private val localSearch =
