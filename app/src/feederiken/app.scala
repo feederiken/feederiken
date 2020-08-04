@@ -5,6 +5,12 @@ import pgp._
 import zio._, zio.logging._
 
 object FeederikenApp extends App {
+  private def loggingLayer =
+    logging.slf4j.Slf4jLogger.make(
+      logFormat = (_, s) => s,
+      rootLoggerName = Some("feederiken"),
+    )
+
   def run(args: List[String]): ZIO[ZEnv, Nothing, ExitCode] =
     for {
       env <- system.envs.orElseSucceed(Map.empty)
@@ -16,7 +22,7 @@ object FeederikenApp extends App {
           }
         case Right(command) =>
           interpret(command)
-            .provideCustomLayer(PGP.bouncyCastle ++ Logging.console())
+            .provideCustomLayer(PGP.bouncyCastle ++ loggingLayer)
             .exitCode
       }
     } yield code
