@@ -47,12 +47,10 @@ package object feederiken {
 
   def saveResult(result: DatedKeyPair) =
     for {
-      _ <- log.info("Saving results to results.asc")
+      _ <- log.info(s"Dumping private key ${result.fingerprint}")
       ring <- makeRing(result, UserId)
-      _ <-
-        Managed
-          .fromAutoCloseable(IO(new FileOutputStream("results.asc", true)))
-          .use(saveRing(ring, _))
+      out <- UIO(Console.out)
+      _ <- saveRing(ring, out)
     } yield ()
 
   def measureFreq[R, E](

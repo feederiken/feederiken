@@ -2,7 +2,7 @@ package feederiken
 
 import pgp._
 
-import zio._, zio.logging._
+import zio._
 
 object FeederikenApp extends App {
   private def loggingLayer =
@@ -16,7 +16,7 @@ object FeederikenApp extends App {
       env <- system.envs.orElseSucceed(Map.empty)
       code <- CLI.top.parse(args, env) match {
         case Left(h) =>
-          console.putStrLn(h.toString).as {
+          console.putStrLnErr(h.toString).as {
             if (h.errors.isEmpty) ExitCode.success
             else ExitCode.failure
           }
