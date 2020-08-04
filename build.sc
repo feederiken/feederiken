@@ -11,4 +11,11 @@ object app extends ScalaModule with ScalafmtModule {
     ivy"dev.zio::zio-actors:0.0.6+28-1e52d1fe-SNAPSHOT",
     ivy"org.bouncycastle:bcpg-jdk15on:1.65",
   )
+
+  object test extends Tests {
+    def ivyDeps = Agg(
+      ivy"org.scalacheck::scalacheck:1.14.3",
+    )
+    def testFrameworks = Seq("org.scalacheck.ScalaCheckFramework")
+  }
 }
