@@ -22,7 +22,11 @@ final class FeederikenSystem(
       minScore: Int,
       maxScore: Int,
   ): Task[Unit] =
-    collector ! Collector.Start(Job(goal, mode, minScore, maxScore, collector))
+  for {
+    finished <- Promise.make[Nothing, Unit]
+    _ <- collector ! Collector.Start(Job(goal, mode, minScore, maxScore, collector), finished)
+    _ <- finished.await
+  } yield ()
 }
 object FeederikenSystem {
 

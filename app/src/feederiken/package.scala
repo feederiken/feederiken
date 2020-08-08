@@ -98,7 +98,6 @@ package object feederiken {
             sys.attachTo(sys.dispatcher)
           }
           _ <- sys.search(goal, mode, minScore, maxScore)
-          _ <- IO.never // Let actors work until interrupted
         } yield ()
 
       case command: Node =>
