@@ -11,7 +11,11 @@ package object pgp {
 
   type KeyPairGenerator = java.security.KeyPairGenerator
   type KeyPair = java.security.KeyPair
-  type DatedKeyPair = org.bouncycastle.openpgp.PGPKeyPair
+  case class DatedKeyPair(
+      kp: KeyPair,
+      creationTime: Date,
+      fingerprint: Chunk[Byte],
+  )
   type KeyRing = org.bouncycastle.openpgp.PGPSecretKeyRing
 
   // Length of PGP fingerprints in bytes
@@ -27,10 +31,10 @@ package object pgp {
   def genKeyPair(kpg: KeyPairGenerator): URIO[PGP, KeyPair] =
     ZIO.service[Service] >>= { _.genKeyPair(kpg) }
 
-  /** Combine a keypair and a timestamp. The PGP fingerprint depends on exactly both.
+  /** Make a PGP key out of a raw keypair and a creation date. Also compute the fingerprint.
     */
-  def dateKeyPair(rawkp: KeyPair)(creationTime: Date): URIO[PGP, DatedKeyPair] =
-    ZIO.service[Service] >>= { _.dateKeyPair(rawkp)(creationTime) }
+  def dateKeyPair(kp: KeyPair, creationTime: Date): URIO[PGP, DatedKeyPair] =
+    ZIO.service[Service] >>= { _.dateKeyPair(kp, creationTime) }
 
   /** Build a keyring from its primary key. This doesn't effect the PGP fingerprint.
     */

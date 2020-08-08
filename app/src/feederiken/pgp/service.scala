@@ -15,7 +15,7 @@ import org.bouncycastle.openpgp.operator.jcajce._
 trait Service {
   def keyPairGenerator: UManaged[KeyPairGenerator]
   def genKeyPair(kpg: KeyPairGenerator): UIO[KeyPair]
-  def dateKeyPair(rawkp: KeyPair)(creationTime: Date): UIO[DatedKeyPair]
+  def dateKeyPair(kp: KeyPair, creationTime: Date): UIO[DatedKeyPair]
   def makeRing(kp: DatedKeyPair, userId: String): UIO[KeyRing]
   def loadRing(in: InputStream): ZIO[blocking.Blocking, IOException, KeyRing]
   def saveRing(
@@ -34,8 +34,14 @@ private class BouncyCastleService(provider: BouncyCastleProvider)
   def genKeyPair(kpg: KeyPairGenerator) =
     UIO(kpg.generateKeyPair())
 
-  def dateKeyPair(rawkp: KeyPair)(creationTime: Date) =
-    UIO(new JcaPGPKeyPair(PublicKeyAlgorithmTags.EDDSA, rawkp, creationTime))
+  private def makeJca(kp: KeyPair, creationTime: Date) =
+    UIO(new JcaPGPKeyPair(PublicKeyAlgorithmTags.EDDSA, kp, creationTime))
+
+  def dateKeyPair(kp: KeyPair, creationTime: Date): UIO[DatedKeyPair] =
+    for {
+      jcakp <- makeJca(kp, creationTime)
+      fpr = Chunk.fromArray(jcakp.getPublicKey.getFingerprint)
+    } yield DatedKeyPair(kp, creationTime, fpr)
 
   final val hashAlgorithmTag = HashAlgorithmTags.SHA256
   def makeRing(kp: DatedKeyPair, userId: String): UIO[KeyRing] =
@@ -46,18 +52,19 @@ private class BouncyCastleService(provider: BouncyCastleProvider)
           .build()
           .get(hashAlgorithmTag)
       }
+      jcakp <- makeJca(kp.kp, kp.creationTime)
       certificationLevel = PGPSignature.POSITIVE_CERTIFICATION
       hashedPcks = null: PGPSignatureSubpacketVector
       unhashedPcks = null: PGPSignatureSubpacketVector
       keySignerBuilder = new JcaPGPContentSignerBuilder(
-        kp.getPublicKey.getAlgorithm,
+        jcakp.getPublicKey.getAlgorithm,
         hashAlgorithmTag,
       ).setProvider(provider)
       keyEncryptor = null: PBESecretKeyEncryptor
       ring <- UIO {
         new PGPKeyRingGenerator(
           certificationLevel,
-          kp,
+          jcakp,
           userId,
           checksumCalculator,
           hashedPcks,
