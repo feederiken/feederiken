@@ -134,8 +134,8 @@ object CLI {
         }
       }
     }
-  private val configFileO =
-    option[Path]("config-file", "actor system config file").orNone
+  private val configFileO: Opts[Option[Path]] =
+    None.pure[Opts]
   private val configFileA = argument[Path]("config_file")
   private val nodeName = argument[String]("node_name")
   private val mode = argument[Mode]("mode").withDefault(Mode.Prefix)
@@ -166,6 +166,6 @@ object CLI {
 
   def top =
     Command[Command]("feederiken", "Vanity PGP key generator") {
-      subcommands(search, bench, node)
+      subcommands(search, bench)
     }
 }
