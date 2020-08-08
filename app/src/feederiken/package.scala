@@ -36,6 +36,9 @@ package object feederiken {
     }
   }
 
+  def showFingerprint(fpr: IndexedSeq[Byte]): String =
+    fpr.map(_.formatted("%02X")).grouped(2).map(_.mkString).mkString(" ")
+
   def parallelize[R, E, O](
       stream: ZStream[R, E, O]
   ): ZStream[R with Has[SearchParameters], E, O] =
@@ -47,7 +50,7 @@ package object feederiken {
 
   def saveResult(result: DatedKeyPair) =
     for {
-      _ <- log.info(s"Dumping private key ${result.fingerprint}")
+      _ <- log.info(s"Dumping private key ${showFingerprint(result.fingerprint)}")
       ring <- makeRing(result, UserId)
       out <- UIO(Console.out)
       _ <- saveRing(ring, out)
