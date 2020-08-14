@@ -49,7 +49,8 @@ package object feederiken {
 
   def saveResult(result: DatedKeyPair) =
     for {
-      _ <- log.info(s"Dumping private key ${showFingerprint(result.fingerprint)}")
+      _ <-
+        log.info(s"Dumping private key ${showFingerprint(result.fingerprint)}")
       ring <- makeRing(result, UserId)
       out <- UIO(Console.out)
       _ <- saveRing(ring, out)
@@ -57,7 +58,7 @@ package object feederiken {
 
   def measureFreq[I](n: Int) =
     for {
-      _ <- ZSink.take[I](n/10)  // warmup
+      _ <- ZSink.take[I](n / 10) // warmup
       r <- ZSink.take[I](n).timed
       t = r._2
       freq = 1e9 / t.toNanos * n

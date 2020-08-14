@@ -7,7 +7,10 @@ import feederiken.Env
 object Worker {
   sealed trait State extends Product with Serializable
   private case class Ready(finished: Promise[Nothing, Unit]) extends State
-  private case class Busy(fiber: Fiber[Nothing, Unit], finished: Promise[Nothing, Unit]) extends State
+  private case class Busy(
+      fiber: Fiber[Nothing, Unit],
+      finished: Promise[Nothing, Unit],
+  ) extends State
   def initial(finished: Promise[Nothing, Unit]): State = Ready(finished)
 
   sealed trait Commands[+_] extends Product with Serializable

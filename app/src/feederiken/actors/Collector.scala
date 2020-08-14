@@ -6,10 +6,22 @@ import feederiken.Env
 
 object Collector {
   sealed trait State extends Product with Serializable
-  private case class Ready(dispatcher: Dispatcher, saver: Saver, finished: Promise[Nothing, Unit]) extends State
-  private case class Busy(dispatcher: Dispatcher, saver: Saver, job: Job, finished: Promise[Nothing, Unit])
-      extends State
-  def initial(dispatcher: Dispatcher, saver: Saver, finished: Promise[Nothing, Unit]): State =
+  private case class Ready(
+      dispatcher: Dispatcher,
+      saver: Saver,
+      finished: Promise[Nothing, Unit],
+  ) extends State
+  private case class Busy(
+      dispatcher: Dispatcher,
+      saver: Saver,
+      job: Job,
+      finished: Promise[Nothing, Unit],
+  ) extends State
+  def initial(
+      dispatcher: Dispatcher,
+      saver: Saver,
+      finished: Promise[Nothing, Unit],
+  ): State =
     Ready(dispatcher, saver, finished)
 
   sealed trait Commands[+_] extends Product with Serializable
@@ -37,28 +49,33 @@ object Collector {
         case Busy(dispatcher, saver, job, finished) =>
           msg match {
             case Start(_) =>
-              IO.fail(new IllegalStateException("cannot start a job while another is already in progress"))
+              IO.fail(
+                new IllegalStateException(
+                  "cannot start a job while another is already in progress"
+                )
+              )
             case Process(result) =>
               val currentScore = job.score(result)
-              def maybeSave = IO.when(currentScore >= job.minScore) {
+              def maybeSave =
+                IO.when(currentScore >= job.minScore) {
                   saver ? Saver.Save(result)
-              }
+                }
               def updateJob =
                 if (currentScore >= job.maxScore)
-                for {
-                  _ <- dispatcher ! Dispatcher.Reset
-                  _ <- finished.succeed()
-                } yield Ready(dispatcher, saver, finished)
+                  for {
+                    _ <- dispatcher ! Dispatcher.Reset
+                    _ <- finished.succeed()
+                  } yield Ready(dispatcher, saver, finished)
                 else if (currentScore >= job.minScore) {
-                    for {
+                  for {
                     job <- UIO(job.copy(minScore = currentScore + 1))
-                  _ <- dispatcher ! Dispatcher.Start(job)
-                     } yield Busy(dispatcher, saver, job, finished)
+                    _ <- dispatcher ! Dispatcher.Start(job)
+                  } yield Busy(dispatcher, saver, job, finished)
                 } else IO.succeed(state)
-                for {
-                    _ <- maybeSave
-                    state <- updateJob
-                } yield (state, ())
+              for {
+                _ <- maybeSave
+                state <- updateJob
+              } yield (state, ())
           }
       }
   }
