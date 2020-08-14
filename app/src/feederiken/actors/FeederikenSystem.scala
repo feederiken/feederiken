@@ -41,12 +41,14 @@ final class FeederikenSystem(
   } yield ()
 }
 object FeederikenSystem {
-
-  def start(name: String, configFile: Option[File]) =
-    for {
-      as <- ActorSystem(name, configFile)
-      sup = actors.Supervisor.none
-      dispatcher <-
-        as.make("dispatcher", sup, Dispatcher.initial, Dispatcher.Interpreter)
-    } yield new FeederikenSystem(as, dispatcher)
+  def start(name: String, configFile: Option[File]): RManaged[Env, FeederikenSystem] = {
+    val acquire: RIO[Env, FeederikenSystem] =
+      for {
+        as <- ActorSystem(name, configFile)
+        sup = actors.Supervisor.none
+        dispatcher <-
+          as.make("dispatcher", sup, Dispatcher.initial, Dispatcher.Interpreter)
+      } yield new FeederikenSystem(as, dispatcher)
+    ZManaged.make(acquire)(_.as.shutdown.orDie)
+  }
 }
