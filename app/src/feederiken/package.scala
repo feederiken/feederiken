@@ -12,7 +12,6 @@ package object feederiken {
   type Services = ZEnv with PGP with Logging
   type Env = Services with Has[SearchParameters]
 
-  val now: URIO[Services, Date] = UIO(new Date)
   val availableProcessors: URIO[Services, Int] = for {
     n <- UIO(java.lang.Runtime.getRuntime.availableProcessors)
     _ <- log.info(s"Detected $n parallel threads")
@@ -21,10 +20,10 @@ package object feederiken {
   def genCandidates: ZStream[Env, Throwable, DatedKeyPair] = {
     ZStream.unwrap {
       for {
-        creationTime <- now
+        creationTime <- clock.instant
         creationTimeRange = Chunk.fromIterable(for {
           t <- 0 until 1024
-        } yield Date.from(creationTime.toInstant().minusSeconds(t)))
+        } yield Date.from(creationTime.minusSeconds(t)))
       } yield ZStream {
         for {
           kpg <- keyPairGenerator
