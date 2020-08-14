@@ -95,7 +95,7 @@ package object feederiken {
           )(_ min _)
           minScore = command.minScore.foldRight(maxScore)(_ min _)
           _ <- RIO.when(command.localSearch) {
-            sys.attachTo(sys.dispatcher)
+            sys.attachTo(sys.dispatcher).forkAs("worker")
           }
           path <- sys.dispatcher.path
           _ <- RIO.when(command.configFile.nonEmpty) {
