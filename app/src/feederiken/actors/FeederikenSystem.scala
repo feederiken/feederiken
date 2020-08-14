@@ -16,7 +16,7 @@ final class FeederikenSystem(
       finished <- Promise.make[Nothing, Unit]
       sup = actors.Supervisor.none
       worker <- as.make("worker", sup, Worker.initial(finished), Worker.Interpreter)
-      _ <- dispatcher ! Dispatcher.Attach(worker)
+      _ <- dispatcher ? Dispatcher.Attach(worker)
       _ <- finished.await
     } yield ()
 
@@ -36,7 +36,7 @@ final class FeederikenSystem(
         Collector.initial(dispatcher, saver, finished),
         Collector.Interpreter,
       )
-    _ <- collector ! Collector.Start(Job(goal, mode, minScore, maxScore, collector))
+    _ <- collector ? Collector.Start(Job(goal, mode, minScore, maxScore, collector))
     _ <- finished.await
   } yield ()
 }
