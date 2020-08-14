@@ -6,9 +6,9 @@ import feederiken.Env
 
 object Worker {
   sealed trait State extends Product with Serializable
-  private case object Ready extends State
-  private case class Busy(fiber: Fiber[Nothing, Unit]) extends State
-  def initial: State = Ready
+  private case class Ready(finished: Promise[Nothing, Unit]) extends State
+  private case class Busy(fiber: Fiber[Nothing, Unit], finished: Promise[Nothing, Unit]) extends State
+  def initial(finished: Promise[Nothing, Unit]): State = Ready(finished)
 
   sealed trait Commands[+_] extends Product with Serializable
   case class Start(job: Job) extends Commands[Unit]
@@ -21,25 +21,26 @@ object Worker {
         context: Context,
     ): RIO[Env, (State, A)] =
       state match {
-        case Ready =>
+        case Ready(finished) =>
           msg match {
-            case Reset => IO.succeed(Ready, ())
+            case Reset => IO.succeed(Ready(finished), ())
             case Start(job) =>
               for {
                 fiber <- job.perform.orDie.fork
-              } yield (Busy(fiber), ())
+              } yield (Busy(fiber, finished), ())
           }
-        case Busy(fiber) =>
+        case Busy(fiber, finished) =>
           msg match {
             case Reset =>
               for {
                 _ <- fiber.interrupt
-              } yield (Ready, ())
+                _ <- finished.succeed()
+              } yield (Ready(finished), ())
             case Start(job) =>
               for {
                 _ <- fiber.interrupt
                 fiber <- job.perform.orDie.fork
-              } yield (Busy(fiber), ())
+              } yield (Busy(fiber, finished), ())
           }
       }
   }
