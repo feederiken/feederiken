@@ -1,6 +1,6 @@
 package feederiken.actors
 
-import zio._, zio.actors._
+import zio._, zio.actors._, zio.logging._
 
 import feederiken.Env
 
@@ -21,19 +21,21 @@ object Dispatcher {
   case object Reset extends Commands[Unit]
   case class Start(job: Job) extends Commands[Unit]
 
-  object Interpreter extends Actor.Stateful[Any, State, Commands] {
+  object Interpreter extends Actor.Stateful[Env, State, Commands] {
     def receive[A](
         state: State,
         msg: Commands[A],
         context: Context,
-    ): RIO[Any, (State, A)] = {
+    ): RIO[Env, (State, A)] = {
       def broadcastWorkers(msg: Worker.Commands[Any]) =
         IO.foreachPar_(state.workers) { _ ! msg }
       state match {
         case Ready(workers) =>
           msg match {
             case Attach(worker) =>
-              UIO(Ready(worker :: workers), ())
+              for {
+                _ <- log.info("attached 1 worker")
+              } yield (Ready(worker :: workers), ())
             case Reset =>
               UIO(state, ())
             case Start(job) =>
@@ -44,8 +46,10 @@ object Dispatcher {
         case Busy(workers, job) =>
           msg match {
             case Attach(worker) =>
-              { worker ! Worker.Start(job) } *>
-                UIO(Busy(worker :: workers, job), ())
+              for {
+                _ <- log.info("attached 1 worker")
+                _ <- worker ! Worker.Start(job)
+              } yield (Busy(worker :: workers, job), ())
             case Reset =>
               broadcastWorkers(Worker.Reset) *>
                 UIO(Ready(workers), ())

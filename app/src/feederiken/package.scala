@@ -93,8 +93,12 @@ package object feederiken {
             mode.maxScore(goal, FingerprintLength)
           )(_ min _)
           minScore = command.minScore.foldRight(maxScore)(_ min _)
-          _ <- IO.when(command.localSearch) {
-            sys.attachTo(sys.dispatcher)
+          _ <- RIO.when(command.localSearch) {
+            sys.attachTo(sys.dispatcher).forkAs("worker")
+          }
+          path <- sys.dispatcher.path
+          _ <- RIO.when(command.configFile.nonEmpty) {
+            console.putStrLnErr(s"dispatcher address: $path")
           }
           _ <- sys.search(goal, mode, minScore, maxScore)
         } yield ()
@@ -107,7 +111,6 @@ package object feederiken {
           )
           dispatcher <- sys.select(command.dispatcherPath)
           _ <- sys.attachTo(dispatcher)
-          _ <- IO.never // Let actors work until interrupted
         } yield ()
     }).provideSomeLayer(SearchParameters.fromCommand(command))
 }

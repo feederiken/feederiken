@@ -3,28 +3,40 @@ package feederiken.actors
 import zio._, zio.actors._, zio.duration._, zio.logging._
 import java.io.File
 
-import feederiken.Mode
+import feederiken.{Env, Mode}
 
 final class FeederikenSystem(
     protected val as: ActorSystem,
-    val collector: Collector,
     val dispatcher: Dispatcher,
-    val worker: Worker,
 ) {
   def select[F[+_]](path: String): Task[ActorRef[Any]] = as.select(path)
 
-  def attachTo(dispatcher: Dispatcher): Task[Unit] =
-    dispatcher ! Dispatcher.Attach(worker)
+  def attachTo(dispatcher: Dispatcher): RIO[Env, Unit] =
+    for {
+      finished <- Promise.make[Nothing, Unit]
+      sup = actors.Supervisor.none
+      worker <- as.make("worker", sup, Worker.initial(finished), Worker.Interpreter)
+      _ <- dispatcher ? Dispatcher.Attach(worker)
+      _ <- finished.await
+    } yield ()
 
   def search(
       goal: Chunk[Byte],
       mode: Mode,
       minScore: Int,
       maxScore: Int,
-  ): Task[Unit] =
-  for {
-    finished <- Promise.make[Nothing, Unit]
-    _ <- collector ! Collector.Start(Job(goal, mode, minScore, maxScore, collector), finished)
+  ): RIO[Env, Unit] =
+    for {
+      finished <- Promise.make[Nothing, Unit]
+      sup = actors.Supervisor.none
+      saver <- as.make("saver", sup, Saver.initial, Saver.Interpreter)
+      collector <- as.make(
+        "collector",
+        sup,
+        Collector.initial(dispatcher, saver, finished),
+        Collector.Interpreter,
+      )
+    _ <- collector ? Collector.Start(Job(goal, mode, minScore, maxScore, collector))
     _ <- finished.await
   } yield ()
 }
@@ -36,13 +48,5 @@ object FeederikenSystem {
       sup = actors.Supervisor.none
       dispatcher <-
         as.make("dispatcher", sup, Dispatcher.initial, Dispatcher.Interpreter)
-      saver <- as.make("saver", sup, Saver.initial, Saver.Interpreter)
-      collector <- as.make(
-        "collector",
-        sup,
-        Collector.initial(dispatcher, saver),
-        Collector.Interpreter,
-      )
-      worker <- as.make("worker", sup, Worker.initial, Worker.Interpreter)
-    } yield new FeederikenSystem(as, collector, dispatcher, worker)
+    } yield new FeederikenSystem(as, dispatcher)
 }
