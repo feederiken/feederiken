@@ -41,7 +41,7 @@ object Collector {
             case Process(result) =>
               val currentScore = job.score(result)
               def maybeSave = IO.when(currentScore >= job.minScore) {
-                  saver ! Saver.Save(result)
+                  saver ? Saver.Save(result)
               }
               def updateJob =
                 if (currentScore >= job.maxScore)
