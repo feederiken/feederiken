@@ -82,38 +82,36 @@ package object feederiken {
         } yield ()
 
       case command: Search =>
-        FeederikenSystem.start(
-          "coordinator",
-          command.configFile.map(_.toFile),
-        ).use { sys =>
-          for {
-            _ <- UIO.unit
-            goal = command.goal.iterator.to(ChunkLike)
-            mode = command.mode
-            maxScore = command.maxScore.foldRight(
-              mode.maxScore(goal, FingerprintLength)
-            )(_ min _)
-            minScore = command.minScore.foldRight(maxScore)(_ min _)
-            _ <- RIO.when(command.localSearch) {
-              sys.attachTo(sys.dispatcher).forkAs("worker")
-            }
-            path <- sys.dispatcher.path
-            _ <- RIO.when(command.configFile.nonEmpty) {
-              console.putStrLnErr(s"dispatcher address: $path")
-            }
-            _ <- sys.search(goal, mode, minScore, maxScore)
-          } yield ()
-        }
+        for {
+          sys <- FeederikenSystem.start(
+            "coordinator",
+            command.configFile.map(_.toFile),
+          )
+
+          goal = command.goal.iterator.to(ChunkLike)
+          mode = command.mode
+          maxScore = command.maxScore.foldRight(
+            mode.maxScore(goal, FingerprintLength)
+          )(_ min _)
+          minScore = command.minScore.foldRight(maxScore)(_ min _)
+          _ <- RIO.when(command.localSearch) {
+            sys.attachTo(sys.dispatcher).forkAs("worker")
+          }
+          path <- sys.dispatcher.path
+          _ <- RIO.when(command.configFile.nonEmpty) {
+            console.putStrLnErr(s"dispatcher address: $path")
+          }
+          _ <- sys.search(goal, mode, minScore, maxScore)
+        } yield ()
 
       case command: Node =>
-        FeederikenSystem.start(
-          command.nodeName,
-          Some(command.configFile.toFile),
-        ).use { sys =>
-          for {
-            dispatcher <- sys.select(command.dispatcherPath)
-            _ <- sys.attachTo(dispatcher)
-          } yield ()
-        }
+        for {
+          sys <- FeederikenSystem.start(
+            command.nodeName,
+            Some(command.configFile.toFile),
+          )
+          dispatcher <- sys.select(command.dispatcherPath)
+          _ <- sys.attachTo(dispatcher)
+        } yield ()
     }).provideSomeLayer(SearchParameters.fromCommand(command))
 }
