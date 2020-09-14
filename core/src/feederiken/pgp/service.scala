@@ -4,6 +4,7 @@ import zio._
 
 import java.io._
 import java.util.Date
+import java.security.MessageDigest
 import org.bouncycastle.jce.provider.BouncyCastleProvider
 import org.bouncycastle.bcpg._
 import org.bouncycastle.openpgp._
@@ -37,10 +38,34 @@ private class BouncyCastleService(provider: BouncyCastleProvider)
   private def makeJca(kp: KeyPair, creationTime: Date) =
     UIO(new JcaPGPKeyPair(PublicKeyAlgorithmTags.EDDSA, kp, creationTime))
 
+  private val Ed25519Oid = Chunk(
+    // per https://tools.ietf.org/html/draft-koch-eddsa-for-openpgp-04#section-6
+    0x2B, 0x06, 0x01, 0x04, 0x01, 0xDA, 0x47, 0x0F, 0x01,
+  ).map(_.toByte)
+
+  def sha1(data: Chunk[Byte]): UIO[Chunk[Byte]] =
+    for {
+      md <- UIO(MessageDigest.getInstance("SHA1", provider))
+      hash <- UIO(md.digest(data.toArray))
+    } yield Chunk.fromArray(hash)
+
   def dateKeyPair(kp: KeyPair, creationTime: Date): UIO[DatedKeyPair] =
     for {
-      jcakp <- makeJca(kp, creationTime)
-      fpr = Chunk.fromArray(jcakp.getPublicKey.getFingerprint)
+      encoded <- UIO(kp.getPublic.getEncoded)
+      q = Chunk.fromArray(encoded).drop(12)
+      timestamp = creationTime.getTime() / 1000
+      version = 4.toByte
+      pkp =
+        // per https://tools.ietf.org/html/rfc4880#page-42
+        version +: (timestamp >> 24).toByte +: (timestamp >> 16).toByte +: (timestamp >> 8).toByte +: timestamp.toByte +:
+        // per https://tools.ietf.org/html/draft-koch-eddsa-for-openpgp-04#section-4
+        PublicKeyAlgorithmTags.EDDSA.toByte +: Ed25519Oid.length.toByte +: Ed25519Oid ++:
+        // per https://tools.ietf.org/html/draft-koch-eddsa-for-openpgp-04#section-3
+        1.toByte +: 7.toByte +: 0x40.toByte +: q
+
+      fpr <-
+        // per https://tools.ietf.org/html/rfc4880#section-12.2
+        sha1(0x99.toByte +: (pkp.length >> 8).toByte +: pkp.length.toByte +: pkp)
     } yield DatedKeyPair(kp, creationTime, fpr)
 
   final val hashAlgorithmTag = HashAlgorithmTags.SHA256
