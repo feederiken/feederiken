@@ -15,6 +15,7 @@ object Deps {
   val zioActors = ivy"dev.zio::zio-actors:$zioActorsVersion"
   val zioLogging = ivy"dev.zio::zio-logging:$zioLoggingVersion"
   val zioLoggingSlf4j = ivy"dev.zio::zio-logging-slf4j:$zioLoggingVersion"
+  val zoclCore = ivy"io.github.feederiken::zocl-core:0.0.1"
   val bcpg = ivy"org.bouncycastle:bcpg-jdk15on:1.65"
   val catsCore = ivy"org.typelevel::cats-core:$catsVersion"
   val decline = ivy"com.monovore::decline:$declineVersion"
@@ -29,7 +30,7 @@ trait common extends ScalaModule with ScalafmtModule {
 }
 
 object core extends common {
-  def ivyDeps = Agg(zio, zioStream, zioLogging, bcpg)
+  def ivyDeps = Agg(zio, zioStream, zioLogging, bcpg, zoclCore)
 
   object test extends Tests {
     def ivyDeps = Agg(scalacheck)
