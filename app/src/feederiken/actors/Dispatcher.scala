@@ -2,24 +2,23 @@ package feederiken.actors
 
 import zio._, zio.actors._, zio.logging._
 
-import feederiken.Env
+import feederiken.core._, feederiken.messages._
 
-object Dispatcher {
+object TrivialDispatcher {
+  import Dispatcher._
+
   sealed trait State extends Product with Serializable {
-    val workers: List[Worker]
+    val workers: List[Worker.Ref]
   }
-  private case class Ready(workers: List[Worker]) extends State
+  private case class Ready(workers: List[Worker.Ref]) extends State
   private case class Busy(
-      workers: List[Worker],
+      workers: List[Worker.Ref],
       currentJob: Job,
   ) extends State
 
-  def initial: State = Ready(Nil)
+  val initial: State = Ready(Nil)
 
-  sealed trait Commands[+_] extends Product with Serializable
-  case class Attach(worker: Worker) extends Commands[Unit]
-  case object Reset extends Commands[Unit]
-  case class Start(job: Job) extends Commands[Unit]
+  type Env = Logging
 
   object Interpreter extends Actor.Stateful[Env, State, Commands] {
     def receive[A](

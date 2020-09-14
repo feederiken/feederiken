@@ -2,15 +2,14 @@ package feederiken.actors
 
 import zio._, zio.actors._
 
-import feederiken.Env
+import feederiken.core._, feederiken.messages._
 
-object Saver {
+object FeederikenSaver {
+  import Saver._
+
   sealed trait State extends Product with Serializable
   private case object Ready extends State
-  def initial: State = Ready
-
-  sealed trait Commands[+_] extends Product with Serializable
-  case class Save(result: Job.Result) extends Commands[Unit]
+  val initial: State = Ready
 
   object Interpreter extends Actor.Stateful[Env, State, Commands] {
     def receive[A](
@@ -23,7 +22,7 @@ object Saver {
           msg match {
             case Save(result) =>
               for {
-                _ <- feederiken.saveResult(result)
+                _ <- saveResult(result)
               } yield (state, ())
           }
       }

@@ -1,6 +1,6 @@
 package feederiken
 
-import pgp._
+import feederiken.pgp._
 
 import zio._
 

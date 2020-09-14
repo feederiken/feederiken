@@ -1,4 +1,4 @@
-package feederiken
+package feederiken.core
 
 import zio._
 
@@ -8,13 +8,6 @@ case class SearchParameters(
 )
 
 object SearchParameters {
-  def fromCommand(command: Command): URLayer[Services, Has[SearchParameters]] =
-    ZLayer.fromEffect {
-      for {
-        threadCount <- command.j.fold(availableProcessors)(UIO(_))
-      } yield SearchParameters(threadCount)
-    }
-
   def get: URIO[Has[SearchParameters], SearchParameters] = RIO.service
   def threadCount: URIO[Has[SearchParameters], Int] = get.map(_.threadCount)
   def gpuAccel: URIO[Has[SearchParameters], Boolean] = get.map(_.gpuAccel)

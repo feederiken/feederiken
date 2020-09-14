@@ -2,31 +2,29 @@ package feederiken.actors
 
 import zio._, zio.actors._
 
-import feederiken.Env
+import feederiken.core._, feederiken.messages._
 
-object Collector {
+object FeederikenCollector {
+  import Collector._
+
   sealed trait State extends Product with Serializable
   private case class Ready(
-      dispatcher: Dispatcher,
-      saver: Saver,
+      dispatcher: Dispatcher.Ref,
+      saver: Saver.Ref,
       finished: Promise[Nothing, Unit],
   ) extends State
   private case class Busy(
-      dispatcher: Dispatcher,
-      saver: Saver,
+      dispatcher: Dispatcher.Ref,
+      saver: Saver.Ref,
       job: Job,
       finished: Promise[Nothing, Unit],
   ) extends State
   def initial(
-      dispatcher: Dispatcher,
-      saver: Saver,
+      dispatcher: Dispatcher.Ref,
+      saver: Saver.Ref,
       finished: Promise[Nothing, Unit],
   ): State =
     Ready(dispatcher, saver, finished)
-
-  sealed trait Commands[+_] extends Product with Serializable
-  case class Start(job: Job) extends Commands[Unit]
-  case class Process(result: Job.Result) extends Commands[Unit]
 
   object Interpreter extends Actor.Stateful[Env, State, Commands] {
     def receive[A](
