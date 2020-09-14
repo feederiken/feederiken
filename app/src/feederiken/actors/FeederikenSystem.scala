@@ -15,8 +15,12 @@ final class FeederikenSystem(
     for {
       finished <- Promise.make[Nothing, Unit]
       sup = actors.Supervisor.none
-      worker <-
-        as.make("worker", sup, FeederikenWorker.initial(finished), FeederikenWorker.Interpreter)
+      worker <- as.make(
+        "worker",
+        sup,
+        FeederikenWorker.initial(finished),
+        FeederikenWorker.Interpreter,
+      )
       _ <- dispatcher ? Dispatcher.Attach(worker)
       _ <- finished.await
     } yield ()
@@ -30,7 +34,12 @@ final class FeederikenSystem(
     for {
       finished <- Promise.make[Nothing, Unit]
       sup = actors.Supervisor.none
-      saver <- as.make("saver", sup, FeederikenSaver.initial, FeederikenSaver.Interpreter)
+      saver <- as.make(
+        "saver",
+        sup,
+        FeederikenSaver.initial,
+        FeederikenSaver.Interpreter,
+      )
       collector <- as.make(
         "collector",
         sup,
@@ -49,7 +58,11 @@ object FeederikenSystem {
     for {
       as <- ActorSystem(name, configFile)
       sup = actors.Supervisor.none
-      dispatcher <-
-        as.make("dispatcher", sup, TrivialDispatcher.initial, TrivialDispatcher.Interpreter)
+      dispatcher <- as.make(
+        "dispatcher",
+        sup,
+        TrivialDispatcher.initial,
+        TrivialDispatcher.Interpreter,
+      )
     } yield new FeederikenSystem(as, dispatcher)
 }

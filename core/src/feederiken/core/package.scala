@@ -5,7 +5,7 @@ package object core {
 
   import zio._, zio.stream._, zio.logging._
 
-  import java.io.FileOutputStream, java.util.Date
+  import java.util.Date
 
   val UserId = "Anonymous"
 
@@ -47,15 +47,15 @@ package object core {
     }
 
   def performSearch(
-    goal: Chunk[Byte],
-    mode: Mode,
-    minScore: Int,
-    ): ZStream[Env, Throwable, DatedKeyPair] =
-      parallelize {
-        genCandidates.filter { kp =>
-          mode.score(goal, kp.fingerprint) >= minScore
-        }
+      goal: Chunk[Byte],
+      mode: Mode,
+      minScore: Int,
+  ): ZStream[Env, Throwable, DatedKeyPair] =
+    parallelize {
+      genCandidates.filter { kp =>
+        mode.score(goal, kp.fingerprint) >= minScore
       }
+    }
 
   def saveResult(result: DatedKeyPair) =
     for {

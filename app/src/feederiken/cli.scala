@@ -1,7 +1,8 @@
 package feederiken
 
+import feederiken.core._
+
 import com.monovore.decline._
-import core._
 import cats.syntax.all._
 import cats.instances.list._
 import cats.data._
