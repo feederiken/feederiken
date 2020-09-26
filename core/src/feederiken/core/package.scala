@@ -11,7 +11,7 @@ package object core {
 
   type HashingPool = Has[HashingPool.Service]
 
-  type Env = ZEnv with PGP with Logging with Has[SearchParameters] with HashingPool
+  type Env = ZEnv with PGP with Logging with HashingPool
 
   val availableProcessors: URIO[Logging, Int] = for {
     n <- UIO(java.lang.Runtime.getRuntime.availableProcessors)
@@ -28,12 +28,11 @@ package object core {
       } yield ZStream {
         for {
           kpg <- keyPairGenerator
-        } yield HashingPool.execute {
+        } yield
           for {
             kp <- genKeyPair(kpg)
             batch <- creationTimeRange.mapM(dateKeyPair(kp, _))
           } yield batch
-        }
       }
     }
   }
@@ -41,21 +40,12 @@ package object core {
   def showFingerprint(fpr: IndexedSeq[Byte]): String =
     fpr.map(_.formatted("%02X")).grouped(2).map(_.mkString).mkString(" ")
 
-  def parallelize[R, E, O](
-      stream: ZStream[R, E, O]
-  ): ZStream[R with Has[SearchParameters], E, O] =
-    ZStream.unwrap {
-      for {
-        threadCount <- SearchParameters.threadCount
-      } yield ZStream.mergeAllUnbounded()(Seq.fill(threadCount)(stream): _*)
-    }
-
   def performSearch(
       goal: Chunk[Byte],
       mode: Mode,
       minScore: Int,
-  ): ZStream[Env with Has[SearchParameters], Throwable, DatedKeyPair] =
-    parallelize {
+  ): ZStream[Env, Throwable, DatedKeyPair] =
+    HashingPool.parallelize {
       genCandidates.filter { kp =>
         mode.score(goal, kp.fingerprint) >= minScore
       }
