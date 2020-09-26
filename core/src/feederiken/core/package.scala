@@ -28,11 +28,10 @@ package object core {
       } yield ZStream {
         for {
           kpg <- keyPairGenerator
-        } yield
-          for {
-            kp <- genKeyPair(kpg)
-            batch <- creationTimeRange.mapM(dateKeyPair(kp, _))
-          } yield batch
+        } yield for {
+          kp <- genKeyPair(kpg)
+          batch <- creationTimeRange.mapM(dateKeyPair(kp, _))
+        } yield batch
       }
     }
   }

@@ -40,7 +40,7 @@ private class BouncyCastleService(provider: BouncyCastleProvider)
 
   private val Ed25519Oid = Chunk(
     // per https://tools.ietf.org/html/draft-koch-eddsa-for-openpgp-04#section-6
-    0x2B, 0x06, 0x01, 0x04, 0x01, 0xDA, 0x47, 0x0F, 0x01,
+    0x2b, 0x06, 0x01, 0x04, 0x01, 0xda, 0x47, 0x0f, 0x01,
   ).map(_.toByte)
 
   def sha1(data: Chunk[Byte]): UIO[Chunk[Byte]] =
@@ -58,14 +58,16 @@ private class BouncyCastleService(provider: BouncyCastleProvider)
       pkp =
         // per https://tools.ietf.org/html/rfc4880#page-42
         version +: (timestamp >> 24).toByte +: (timestamp >> 16).toByte +: (timestamp >> 8).toByte +: timestamp.toByte +:
-        // per https://tools.ietf.org/html/draft-koch-eddsa-for-openpgp-04#section-4
-        PublicKeyAlgorithmTags.EDDSA.toByte +: Ed25519Oid.length.toByte +: Ed25519Oid ++:
-        // per https://tools.ietf.org/html/draft-koch-eddsa-for-openpgp-04#section-3
-        1.toByte +: 7.toByte +: 0x40.toByte +: q
+          // per https://tools.ietf.org/html/draft-koch-eddsa-for-openpgp-04#section-4
+          PublicKeyAlgorithmTags.EDDSA.toByte +: Ed25519Oid.length.toByte +: Ed25519Oid ++:
+          // per https://tools.ietf.org/html/draft-koch-eddsa-for-openpgp-04#section-3
+          1.toByte +: 7.toByte +: 0x40.toByte +: q
 
       fpr <-
         // per https://tools.ietf.org/html/rfc4880#section-12.2
-        sha1(0x99.toByte +: (pkp.length >> 8).toByte +: pkp.length.toByte +: pkp)
+        sha1(
+          0x99.toByte +: (pkp.length >> 8).toByte +: pkp.length.toByte +: pkp
+        )
     } yield DatedKeyPair(kp, creationTime, fpr)
 
   final val hashAlgorithmTag = HashAlgorithmTags.SHA256

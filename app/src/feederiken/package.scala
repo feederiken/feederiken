@@ -68,5 +68,7 @@ package object feederiken {
 
   def interpret(command: Command): RIO[ZEnv with PGP with Logging, Unit] =
     interpret1(command)
-      .provideSomeLayer[ZEnv with PGP with Logging](searchParameters(command) andTo HashingPool.live)
+      .provideSomeLayer[ZEnv with PGP with Logging](
+        searchParameters(command) andTo HashingPool.live
+      )
 }
