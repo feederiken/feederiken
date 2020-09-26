@@ -9,7 +9,9 @@ package object core {
 
   val UserId = "Anonymous"
 
-  type Env = ZEnv with PGP with Logging with Has[SearchParameters]
+  type HashingPool = Has[HashingPool.Service]
+
+  type Env = ZEnv with PGP with Logging with Has[SearchParameters] with HashingPool
 
   val availableProcessors: URIO[Logging, Int] = for {
     n <- UIO(java.lang.Runtime.getRuntime.availableProcessors)
@@ -26,10 +28,12 @@ package object core {
       } yield ZStream {
         for {
           kpg <- keyPairGenerator
-        } yield for {
-          kp <- genKeyPair(kpg)
-          batch <- creationTimeRange.mapM(dateKeyPair(kp, _))
-        } yield batch
+        } yield HashingPool.execute {
+          for {
+            kp <- genKeyPair(kpg)
+            batch <- creationTimeRange.mapM(dateKeyPair(kp, _))
+          } yield batch
+        }
       }
     }
   }
@@ -50,7 +54,7 @@ package object core {
       goal: Chunk[Byte],
       mode: Mode,
       minScore: Int,
-  ): ZStream[Env, Throwable, DatedKeyPair] =
+  ): ZStream[Env with Has[SearchParameters], Throwable, DatedKeyPair] =
     parallelize {
       genCandidates.filter { kp =>
         mode.score(goal, kp.fingerprint) >= minScore
