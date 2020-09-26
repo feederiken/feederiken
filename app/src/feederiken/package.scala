@@ -22,8 +22,11 @@ package object feederiken {
             s"Benchmarking $n iterations ${if (threadCount == 1) "without parallelism"
             else s"over $threadCount threads"}"
           )
-          stream = HashingPool.parallelize(genCandidates)
-          freq <- stream.run(measureFreq(n))
+          stream = HashingPool.parallelize(
+            (genCandidates >>> measureFreq[DatedKeyPair](n).toTransducer)
+              .take(1)
+          )
+          freq <- stream.runSum
           _ <- console.putStrLn(
             s"${if (threadCount == 1) "Single-threaded" else "Parallel"} hashrate: $freq Hz"
           )
